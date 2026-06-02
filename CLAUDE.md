@@ -210,54 +210,259 @@
 
 ---
 
-### 🟠 مرحله ۲ — حسابداری کامل (از hesabix)
+### 🟠 مرحله ۲ — حسابداری کامل (از hesabix) ← مرحله بعدی
 
-> منطق کامل از hesabix پیاده‌سازی می‌شود، اما در PHP procedural و با UI موجود
+> **منبع:** منطق از hesabix ترجمه می‌شود، PHP procedural، UI با سیستم موجود یکپارچه
+> **اصل طراحی:** هر فاکتور/تراکنش = یک سند حسابداری (fin_docs) + ردیف‌های دوطرفه (fin_doc_rows)
 
-#### ۲.۱ پلان حساب‌ها و سند حسابداری
-- [ ] جدول `fin_chart_of_accounts` — پلان حساب‌ها (برگرفته از HesabdariTable)
-- [ ] جدول `fin_docs` / `fin_doc_rows` — اسناد حسابداری دوطرفه (برگرفته از HesabdariDoc/Row)
-- [ ] ثبت سند دستی
-- [ ] مرور دفتر کل
+---
 
-#### ۲.۲ فاکتور فروش و خرید (از SellController/BuyController)
-- [ ] جدول `fin_invoices` / `fin_invoice_items`
-- [ ] صدور فاکتور فروش با PDF (TCPDF)
-- [ ] فاکتور خرید
-- [ ] پیش‌فاکتور (از PreinvoiceController)
-- [ ] ارتباط فاکتور با فرصت CRM (فاکتور از فرصت)
+#### ۲.۰ زیرساخت — جداول پایه (Migration اول)
 
-#### ۲.۳ دریافت و پرداخت (از BankController/CashdeskController)
-- [ ] مدیریت حساب‌های بانکی
-- [ ] صندوق نقدی
-- [ ] ثبت دریافت از مشتری
-- [ ] ثبت پرداخت به تامین‌کننده
+**فایل:** `db_migrations/phase2_accounting.sql`
 
-#### ۲.۴ مدیریت چک (از ChequeController)
-- [ ] جدول `fin_cheques`
-- [ ] چک دریافتی / پرداختی
-- [ ] تقویم سررسید چک
+```sql
+-- طرف حساب‌ها (مشتری، تامین‌کننده، کارمند)
+fin_persons: id, code, name, company_name, type ENUM(customer,supplier,both),
+             national_id, economic_code, tel, mobile, address, state, city,
+             opening_balance DECIMAL(20,0) DEFAULT 0,
+             created_at, updated_at, is_deleted TINYINT DEFAULT 0
 
-#### ۲.۵ گزارش‌های مالی (از ReportController)
-- [ ] گزارش سود و زیان
-- [ ] ترازنامه
-- [ ] گزارش جریان نقدی
-- [ ] کارت حساب هر طرف حساب
+-- پلان حساب‌ها (سرفصل‌ها)
+fin_accounts: id, code VARCHAR(20) UNIQUE, name, type ENUM(asset,liability,equity,revenue,expense),
+              parent_id INT DEFAULT NULL,  ← کد بالادست
+              is_system TINYINT DEFAULT 0, ← حذف‌نشدنی
+              created_at, updated_at
+
+-- اسناد حسابداری (هر فاکتور/تراکنش یک doc است)
+fin_docs: id, doc_number VARCHAR(30), doc_date DATE,
+          type ENUM(sell,buy,receive,pay,cheque_receive,cheque_pay,transfer,manual),
+          fiscal_year_id INT, user_id INT,
+          description TEXT, total_amount DECIMAL(20,0),
+          status ENUM(draft,confirmed,cancelled) DEFAULT 'draft',
+          ref_type VARCHAR(50) DEFAULT NULL,   ← 'invoice','mission',...
+          ref_id INT DEFAULT NULL,             ← id رکورد مرجع
+          created_at, updated_at, is_deleted TINYINT DEFAULT 0
+
+-- ردیف‌های سند (بدهکار/بستانکار)
+fin_doc_rows: id, doc_id INT, account_id INT,
+              debit DECIMAL(20,0) DEFAULT 0,   ← بدهکار
+              credit DECIMAL(20,0) DEFAULT 0,  ← بستانکار
+              person_id INT DEFAULT NULL,
+              commodity_id INT DEFAULT NULL,   ← ارتباط با کالا
+              quantity DECIMAL(12,4) DEFAULT NULL,
+              unit_price DECIMAL(20,0) DEFAULT NULL,
+              description VARCHAR(255) DEFAULT NULL,
+              row_order INT DEFAULT 0
+
+-- فاکتورها (جدول خلاصه برای UI — doc_id لینک اصلی است)
+fin_invoices: id, invoice_number VARCHAR(30) UNIQUE,
+              invoice_date DATE, due_date DATE,
+              type ENUM(sell,buy) DEFAULT 'sell',
+              person_id INT,   ← طرف حساب
+              doc_id INT,      ← سند حسابداری مرتبط
+              opportunity_id INT DEFAULT NULL, ← از CRM
+              fiscal_year_id INT, user_id INT,
+              subtotal DECIMAL(20,0), discount DECIMAL(20,0) DEFAULT 0,
+              tax DECIMAL(20,0) DEFAULT 0,
+              total_amount DECIMAL(20,0),
+              paid_amount DECIMAL(20,0) DEFAULT 0,
+              notes TEXT DEFAULT NULL,
+              created_at, updated_at, is_deleted TINYINT DEFAULT 0
+
+-- ردیف‌های فاکتور
+fin_invoice_items: id, invoice_id INT, commodity_id INT,
+                   quantity DECIMAL(12,4), unit_price DECIMAL(20,0),
+                   discount DECIMAL(20,0) DEFAULT 0,
+                   tax DECIMAL(20,0) DEFAULT 0,
+                   total DECIMAL(20,0),
+                   description VARCHAR(255) DEFAULT NULL,
+                   row_order INT DEFAULT 0
+
+-- حساب‌های بانکی
+fin_bank_accounts: id, bank_name, account_number, sheba_number,
+                   account_owner, balance DECIMAL(20,0) DEFAULT 0,
+                   is_active TINYINT DEFAULT 1, created_at
+
+-- صندوق نقدی
+fin_cashdesks: id, name, balance DECIMAL(20,0) DEFAULT 0,
+               user_id INT DEFAULT NULL, is_active TINYINT DEFAULT 1, created_at
+
+-- چک‌ها
+fin_cheques: id, type ENUM(received,issued), cheque_number, bank_name,
+             amount DECIMAL(20,0), person_id INT,
+             issue_date DATE, due_date DATE,
+             status ENUM(pending,cleared,bounced,transferred) DEFAULT 'pending',
+             doc_id INT DEFAULT NULL,
+             bank_account_id INT DEFAULT NULL,
+             description TEXT DEFAULT NULL,
+             created_at, updated_at, is_deleted TINYINT DEFAULT 0
+```
+
+**Seed داده پلان حساب‌ها (پیش‌فرض ایران):**
+```
+1000 دارایی‌ها          (asset)
+  1100 دارایی‌های جاری   (asset)
+    1101 صندوق           (asset, is_system)
+    1102 بانک            (asset, is_system)
+    1103 حساب دریافتنی   (asset, is_system)
+    1104 موجودی کالا      (asset, is_system)
+2000 بدهی‌ها            (liability)
+  2100 بدهی‌های جاری    (liability)
+    2101 حساب پرداختنی   (liability, is_system)
+    2102 چک پرداختنی     (liability, is_system)
+3000 حقوق صاحبان سهام  (equity)
+4000 درآمدها            (revenue)
+  4001 درآمد فروش       (revenue, is_system)
+5000 هزینه‌ها            (expense)
+  5001 بهای تمام شده    (expense, is_system)
+```
+
+---
+
+#### ۲.۱ مدیریت طرف حساب‌ها
+
+**فایل:** `fin_persons.php`
+
+- لیست مشتریان/تامین‌کنندگان با جستجو و فیلتر
+- فرم افزودن/ویرایش (ادغام با جدول `customers` موجود)
+- کارت حساب هر طرف (مانده بدهکار/بستانکار)
+- **ارتباط با CRM:** هر `customer` یک `fin_person` دارد (یا auto-link)
+
+---
+
+#### ۲.۲ فاکتور فروش ← مهم‌ترین بخش
+
+**فایل:** `fin_invoice_sell.php`
+**AJAX:** `admin/ajax/fin_invoice_ajax.php`
+
+**منطق ایجاد فاکتور (از SellController hesabix):**
+```
+کاربر → فرم فاکتور → ثبت:
+1. INSERT fin_invoices (هدر)
+2. INSERT fin_invoice_items (ردیف‌ها)
+3. INSERT fin_docs (type='sell', ref_type='invoice', ref_id=invoice.id)
+4. INSERT fin_doc_rows:
+   بدهکار  → حساب دریافتنی (1103)    به مبلغ کل
+   بستانکار → درآمد فروش (4001)      به مبلغ خالص
+   بستانکار → مالیات پرداختنی       به مبلغ مالیات
+5. اگر opportunity_id داشت → update status فرصت CRM
+6. log فعالیت
+```
+
+**قابلیت‌ها:**
+- [ ] جستجوی مشتری (از `fin_persons` یا `customers`)
+- [ ] جستجوی کالا (از `stuffs` موجود)
+- [ ] افزودن ردیف‌های متعدد (dynamic rows با JS)
+- [ ] محاسبه خودکار تخفیف، مالیات ۹٪، جمع کل
+- [ ] پیوند به فرصت CRM (ساخت فاکتور از کانبان)
+- [ ] **چاپ PDF** با TCPDF (از PrintersController hesabix)
+- [ ] ویرایش فاکتور (فقط قبل از تسویه)
+- [ ] لیست فاکتورها با فیلتر تاریخ/مشتری/وضعیت
+
+---
+
+#### ۲.۳ فاکتور خرید
+
+**فایل:** `fin_invoice_buy.php`
+
+مشابه فروش، ردیف‌های حسابداری معکوس:
+```
+بدهکار  → موجودی کالا (1104) یا هزینه
+بستانکار → حساب پرداختنی (2101)
+```
+
+---
+
+#### ۲.۴ دریافت و پرداخت
+
+**فایل:** `fin_receive_pay.php`
+
+**دریافت از مشتری:**
+```
+بدهکار  → صندوق/بانک
+بستانکار → حساب دریافتنی (1103) — کسر از مانده فاکتور
+→ UPDATE fin_invoices SET paid_amount = paid_amount + X
+```
+
+**پرداخت به تامین‌کننده:**
+```
+بدهکار  → حساب پرداختنی (2101)
+بستانکار → صندوق/بانک
+```
+
+---
+
+#### ۲.۵ مدیریت چک
+
+**فایل:** `fin_cheques.php`
+
+چرخه چک (از ChequeController hesabix):
+```
+دریافت چک   → status=pending → در جریان وصول
+وصول چک      → status=cleared → بستانکار بانک
+برگشت چک     → status=bounced → سند برگشتی
+انتقال/ظهرنویسی → status=transferred
+```
+
+- [ ] تقویم سررسید چک (نمایش ماهانه)
+- [ ] هشدار ۳ روز قبل از سررسید
+
+---
+
+#### ۲.۶ گزارش‌های مالی
+
+**فایل:** `fin_reports.php`
+
+| گزارش | منطق |
+|-------|------|
+| دفتر کل | fin_doc_rows GROUP BY account_id |
+| تراز آزمایشی | مانده بدهکار/بستانکار per حساب |
+| سود و زیان | درآمدها (4xxx) - هزینه‌ها (5xxx) |
+| ترازنامه | دارایی (1xxx) = بدهی (2xxx) + حقوق (3xxx) |
+| کارت حساب | fin_doc_rows WHERE person_id = X |
+| مانده فاکتورها | fin_invoices WHERE paid_amount < total_amount |
+
+---
+
+#### ترتیب پیاده‌سازی پیشنهادی
+
+```
+هفته ۱: Migration جداول + seed پلان حساب‌ها + fin_persons
+هفته ۲: فاکتور فروش (فرم + AJAX + ذخیره + سند حسابداری)
+هفته ۳: چاپ PDF فاکتور + لیست فاکتورها + لینک به CRM
+هفته ۴: فاکتور خرید + دریافت/پرداخت
+هفته ۵: مدیریت چک + گزارش‌های مالی پایه
+```
 
 ---
 
 ### 🟡 مرحله ۳ — انبارداری کامل (از hesabix StoreroomController)
 
-> منطق کامل از StoreroomController و موجودیت‌های Storeroom/StoreroomTicket
+> **منبع:** StoreroomController + StoreroomTicket + StoreroomItem
+> **اصل:** هر رسید/حواله = یک StoreroomTicket + ردیف‌های کالا + لینک به فاکتور
 
-- [ ] جدول `inv_storerooms` — تعریف انبارها
-- [ ] جدول `inv_tickets` / `inv_ticket_items` — رسید و حواله (از StoreroomTicket)
-- [ ] سند رسید انبار (خرید → انبار)
-- [ ] سند حواله انبار (فروش → کسر از انبار)
+#### جداول
+```sql
+inv_storerooms: id, name, code, address, is_active
+inv_tickets: id, ticket_number, date, type ENUM(receipt,dispatch,transfer),
+             storeroom_id INT, from_storeroom_id INT DEFAULT NULL,
+             person_id INT DEFAULT NULL, invoice_id INT DEFAULT NULL,
+             doc_id INT DEFAULT NULL, user_id INT,
+             description TEXT, status ENUM(draft,confirmed),
+             created_at, is_deleted
+inv_ticket_items: id, ticket_id, commodity_id, quantity DECIMAL(12,4),
+                  unit_price DECIMAL(20,0), description
+```
+
+#### قابلیت‌ها
+- [ ] تعریف انبارها
+- [ ] رسید انبار (خرید → انبار) — auto از فاکتور خرید
+- [ ] حواله انبار (فروش → کسر) — auto از فاکتور فروش
 - [ ] انتقال بین انبارها
-- [ ] گزارش کاردکس (موجودی هر کالا)
-- [ ] هشدار موجودی حداقل
-- [ ] ارتباط خودکار با فاکتور فروش/خرید
+- [ ] کاردکس موجودی per کالا
+- [ ] هشدار موجودی حداقل (reorder point از Commodity.orderPoint)
+- [ ] ارزش‌گذاری موجودی (FIFO/میانگین)
 
 ---
 
