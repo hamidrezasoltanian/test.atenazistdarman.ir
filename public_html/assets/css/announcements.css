@@ -1,0 +1,179 @@
+/* public_html/assets/css/announcements.css */
+
+/* تنظیمات کانتینر اصلی (رفع مشکل چسبیدن به کناره‌ها) */
+.content-wrapper {
+    padding: 30px !important; /* اعمال اجباری فاصله */
+    width: 100%;
+    max-width: 1400px;
+    margin: 0 auto;
+    box-sizing: border-box; /* محاسبه پدینگ در عرض */
+}
+
+/* کارت اعلان */
+.ann-card {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 25px;
+    margin-bottom: 25px;
+    position: relative;
+    transition: all 0.2s ease;
+    border-right: 4px solid transparent;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+}
+
+.ann-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 10px 20px rgba(0,0,0,0.05);
+}
+
+/* وضعیت خوانده نشده */
+.ann-card.unread {
+    background-color: #f8fafc;
+    border-color: #bfdbfe;
+}
+.ann-card.unread::after {
+    content: "جدید";
+    position: absolute;
+    top: 15px;
+    left: 15px;
+    background: #ef4444;
+    color: white;
+    font-size: 0.65rem;
+    padding: 2px 8px;
+    border-radius: 10px;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.7; }
+    100% { opacity: 1; }
+}
+
+.ann-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 15px;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.ann-title {
+    font-size: 1.2rem;
+    font-weight: 800;
+    color: #1f2937;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.cat-badge {
+    font-size: 0.75rem;
+    padding: 4px 12px;
+    border-radius: 20px;
+    color: white;
+    font-weight: normal;
+}
+
+.ann-meta {
+    display: flex;
+    gap: 20px;
+    font-size: 0.85rem;
+    color: #9ca3af;
+    margin-bottom: 20px;
+    border-bottom: 1px dashed #e5e7eb;
+    padding-bottom: 15px;
+}
+
+.ann-content {
+    color: #4b5563;
+    font-size: 1rem;
+    line-height: 1.8;
+    text-align: justify;
+    margin-bottom: 20px;
+    white-space: pre-wrap;
+}
+
+/* فوتر کارت */
+.ann-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 15px;
+    padding-top: 15px;
+    border-top: 1px solid #f1f5f9;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.ann-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: #f0f9ff;
+    color: #0284c7;
+    padding: 8px 16px;
+    border-radius: 8px;
+    text-decoration: none;
+    font-size: 0.9rem;
+    transition: 0.2s;
+    border: 1px solid #e0f2fe;
+}
+.ann-link:hover { background: #e0f2fe; border-color: #bae6fd; }
+
+.action-btns { display: flex; gap: 8px; }
+
+/* مودال */
+.modal { max-width: 700px !important; }
+
+/* فیلترها */
+.search-box {
+    background: #fff;
+    padding: 15px;
+    border-radius: 12px;
+    border: 1px solid #e5e7eb;
+    display: flex;
+    gap: 10px;
+    margin-bottom: 30px;
+    align-items: center;
+}
+.search-input { 
+    border: 1px solid #ddd; 
+    border-radius: 8px; 
+    padding: 10px; 
+    width: 100%; 
+    font-family: inherit;
+    outline: none;
+}
+.search-input:focus { border-color: #2563eb; }
+
+/* دکمه‌های متنی استاندارد */
+.btn-sm-custom {
+    padding: 6px 12px;
+    font-size: 0.85rem;
+    border-radius: 6px;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    border: 1px solid transparent;
+    transition: 0.2s;
+}
+
+/* ریسپانسیو */
+@media (max-width: 768px) {
+    .content-wrapper { padding: 15px !important; }
+    .ann-header { flex-direction: column; align-items: flex-start; }
+    .ann-meta { flex-wrap: wrap; gap: 10px; font-size: 0.8rem; }
+    .ann-footer { flex-direction: column; align-items: flex-start; }
+    .action-btns { width: 100%; justify-content: flex-end; margin-top: 10px; }
+}
+
+@media print {
+    .sidebar, .main-header, .page-actions, .search-box, .btn { display: none !important; }
+    .ann-card { break-inside: avoid; border: 1px solid #000; box-shadow: none; margin-bottom: 20px; }
+}

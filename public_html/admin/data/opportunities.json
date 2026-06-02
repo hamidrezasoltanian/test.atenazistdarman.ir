@@ -1,0 +1,201 @@
+{
+    "opportunities": [
+        {
+            "id": 1,
+            "title": "بیمارستان میلاد تهران",
+            "description": "خرید دستگاه MRI و CT Scan",
+            "stage": "lead",
+            "board_id": "default",
+            "priority": "high",
+            "amount": 2500000000,
+            "probability": 30,
+            "contact_person": "دکتر رضایی",
+            "phone": "09123456789",
+            "email": "dr.rezaei@hospital.com",
+            "next_action": "ارسال کاتالوگ",
+            "next_action_date": "2026-05-27",
+            "notes": "ارسال فوری کاتالوگ",
+            "created_at": "2026-05-24 13:56:21",
+            "updated_at": "2026-05-24 13:56:23",
+            "owner": "کارشناس فروش ۱"
+        },
+        {
+            "id": 2,
+            "title": "کلینیک تخصصی پارس",
+            "description": "تجهیزات کلینیک‌های تخصصی",
+            "stage": "contact",
+            "board_id": "default",
+            "priority": "medium",
+            "amount": 850000000,
+            "probability": 50,
+            "contact_person": "آقای محمدی",
+            "phone": "09198765432",
+            "email": "mohammadi@parsclinic.com",
+            "next_action": "هماهنگی ملاقات",
+            "next_action_date": "2026-05-29",
+            "notes": "مشتری پتانسیل خوبی دارد",
+            "created_at": "2026-05-24 13:56:21",
+            "updated_at": "2026-05-24 13:56:21",
+            "owner": "کارشناس فروش ۲"
+        },
+        {
+            "id": 3,
+            "title": "بیمارستان امیرالمومنین",
+            "description": "تجهیزات اتاق عمل",
+            "stage": "meeting",
+            "board_id": "default",
+            "priority": "high",
+            "amount": 1800000000,
+            "probability": 70,
+            "contact_person": "دکتر حسینی",
+            "phone": "09351234567",
+            "email": "hoseini@amirhospital.com",
+            "next_action": "ثبت پیشنهاد قیمت",
+            "next_action_date": "2026-05-26",
+            "notes": "در حال مذاکره نهایی",
+            "created_at": "2026-05-24 13:56:21",
+            "updated_at": "2026-05-24 13:56:21",
+            "owner": "کارشناس فروش ۱"
+        },
+        {
+            "id": "1779619033_1246",
+            "title": "hhgfhfg",
+            "description": "gfhfghg",
+            "stage": "contact",
+            "board_id": "board_6a12d26a35a67",
+            "priority": "low",
+            "amount": 1,
+            "probability": 1,
+            "contact_person": "ghfg",
+            "phone": "66",
+            "email": "",
+            "next_action": "ghg",
+            "next_action_date": "2026-05-24",
+            "notes": "ghgf",
+            "created_at": "2026-05-24 14:07:13",
+            "updated_at": "2026-05-24 14:07:26",
+            "owner": "182e0e978648d2116fb3f900ebde6f9f"
+        },
+        {
+            "id": "1779619033_2792",
+            "title": "hhgfhfg",
+            "description": "gfhfghg",
+            "stage": "lead",
+            "board_id": "board_6a12d26a35a67",
+            "priority": "low",
+            "amount": 1,
+            "probability": 1,
+            "contact_person": "ghfg",
+            "phone": "66",
+            "email": "",
+            "next_action": "ghg",
+            "next_action_date": "2026-05-24",
+            "notes": "ghgf",
+            "created_at": "2026-05-24 14:07:13",
+            "updated_at": "2026-05-24 14:07:25",
+            "owner": "182e0e978648d2116fb3f900ebde6f9f"
+        },
+        {
+            "id": "1779619033_8002",
+            "title": "hhgfhfg",
+            "description": "gfhfghg",
+            "stage": "proposal",
+            "board_id": "board_6a12d26a35a67",
+            "priority": "low",
+            "amount": 1,
+            "probability": 1,
+            "contact_person": "ghfg",
+            "phone": "66",
+            "email": "",
+            "next_action": "ghg",
+            "next_action_date": "2026-05-24",
+            "notes": "ghgf",
+            "created_at": "2026-05-24 14:07:13",
+            "updated_at": "2026-05-24 14:07:28",
+            "owner": "182e0e978648d2116fb3f900ebde6f9f"
+        }
+    ],
+    "stages": [
+        {
+            "id": "lead",
+            "name": "🟡 سرنخ",
+            "order": 1,
+            "color": "#f59e0b"
+        },
+        {
+            "id": "contact",
+            "name": "📞 تماس اولیه",
+            "order": 2,
+            "color": "#0ea5e9"
+        },
+        {
+            "id": "meeting",
+            "name": "🤝 ملاقات",
+            "order": 3,
+            "color": "#8b5cf6"
+        },
+        {
+            "id": "proposal",
+            "name": "📄 پیشنهاد",
+            "order": 4,
+            "color": "#06b6d4"
+        },
+        {
+            "id": "negotiation",
+            "name": "💬 مذاکره",
+            "order": 5,
+            "color": "#f97316"
+        },
+        {
+            "id": "contract",
+            "name": "✅ قرارداد",
+            "order": 6,
+            "color": "#22c55e"
+        },
+        {
+            "id": "lost",
+            "name": "❌ از دست رفته",
+            "order": 7,
+            "color": "#ef4444"
+        },
+        {
+            "id": "stage_6a12d36237ae2",
+            "name": "sdadsad",
+            "order": 8,
+            "color": "#2e7799"
+        }
+    ],
+    "boards": {
+        "default": {
+            "id": "default",
+            "name": "پیش‌فرض",
+            "stages": [
+                "lead",
+                "contact",
+                "meeting",
+                "proposal",
+                "negotiation",
+                "contract",
+                "lost",
+                "stage_6a12d36237ae2"
+            ],
+            "created_at": "2026-05-24 13:56:21"
+        },
+        "board_6a12d26a35a67": {
+            "id": "board_6a12d26a35a67",
+            "name": "قببللبی",
+            "stages": [
+                "lead",
+                "contact",
+                "meeting",
+                "proposal",
+                "negotiation",
+                "contract",
+                "lost",
+                "stage_6a12d36237ae2"
+            ],
+            "created_at": "2026-05-24 13:56:50"
+        }
+    },
+    "last_updated": "2026-05-24 14:07:28"
+}

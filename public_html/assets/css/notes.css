@@ -1,0 +1,286 @@
+/* public_html/assets/css/notes.css */
+
+/* --- تنظیمات کلی صفحه یادداشت --- */
+.content-wrapper {
+    padding: 20px; /* فاصله از لبه‌ها */
+    max-width: 1400px; /* جلوگیری از کش آمدن بیش از حد در مانیتورهای عریض */
+    margin: 0 auto; /* وسط چین کردن */
+}
+
+/* --- نوار ابزار بالا --- */
+.notes-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 25px;
+    background: white;
+    padding: 15px 20px;
+    border-radius: 12px;
+    border: 1px solid #e5e7eb;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+    flex-wrap: wrap;
+    gap: 15px;
+}
+
+.notes-filter {
+    display: flex;
+    gap: 10px;
+}
+
+.filter-btn {
+    background: transparent;
+    border: 1px solid #d1d5db;
+    color: #4b5563;
+    padding: 8px 18px;
+    border-radius: 8px; /* گوشه‌های نرم‌تر */
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-family: 'Vazirmatn', sans-serif !important; /* اصلاح فونت */
+    transition: all 0.2s ease;
+    font-weight: 500;
+}
+
+.filter-btn.active {
+    background: var(--primary);
+    color: white;
+    border-color: var(--primary);
+    box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);
+}
+
+.filter-btn:hover:not(.active) {
+    background: #f3f4f6;
+    color: #1f2937;
+}
+
+/* --- جستجو --- */
+.search-box {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 5px 10px;
+    flex-grow: 1;
+    max-width: 400px;
+}
+
+.search-input {
+    border: none;
+    background: transparent;
+    width: 100%;
+    padding: 5px;
+    font-family: 'Vazirmatn', sans-serif;
+    outline: none;
+}
+
+/* --- گرید یادداشت‌ها --- */
+.notes-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr); /* پیش‌فرض دسکتاپ: 4 ستون */
+    gap: 20px;
+    align-items: start;
+    padding-bottom: 50px; /* فضای پایین برای اسکرول راحت‌تر */
+}
+
+/* --- کارت یادداشت --- */
+.note-card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    border: 1px solid rgba(0,0,0,0.05);
+    transition: transform 0.2s, box-shadow 0.2s;
+    position: relative;
+    min-height: 200px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    cursor: grab; /* نشانگر قابلیت جابجایی */
+    touch-action: manipulation; /* بهبود تجربه لمسی */
+}
+
+.note-card:active {
+    cursor: grabbing;
+}
+
+.note-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+    z-index: 2;
+}
+
+/* استایل‌های درگ و دراپ (برای کتابخانه‌هایی مثل SortableJS) */
+.sortable-ghost {
+    opacity: 0.4;
+    background-color: #f3f4f6;
+    border: 2px dashed #cbd5e1;
+}
+
+.sortable-drag {
+    cursor: grabbing;
+    opacity: 1;
+    background: #fff;
+    transform: scale(1.02);
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+
+.note-header {
+    font-weight: 700;
+    font-size: 1.1rem;
+    margin-bottom: 12px;
+    color: #1f2937;
+    word-break: break-word;
+    line-height: 1.4;
+}
+
+.note-body {
+    font-size: 0.95rem;
+    color: #4b5563;
+    line-height: 1.7;
+    margin-bottom: 45px; /* فضا برای اکشن بار */
+    white-space: pre-wrap;
+    word-break: break-word;
+    flex-grow: 1;
+}
+
+.note-date {
+    font-size: 0.75rem;
+    color: #6b7280;
+    margin-top: auto;
+    position: absolute;
+    bottom: 15px;
+    right: 20px;
+    opacity: 0.7;
+}
+
+/* --- نوار عملیات پایین کارت --- */
+.note-actions {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: flex-start;
+    gap: 5px;
+    padding: 10px 15px;
+    background: rgba(255,255,255,0.6);
+    backdrop-filter: blur(2px);
+    border-top: 1px solid rgba(0,0,0,0.05);
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.note-card:hover .note-actions {
+    opacity: 1;
+}
+
+.action-btn {
+    background: white;
+    border: 1px solid rgba(0,0,0,0.1);
+    cursor: pointer;
+    font-size: 1rem;
+    color: #6b7280;
+    transition: all 0.2s;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.action-btn:hover { transform: scale(1.1); }
+.action-btn[title="ویرایش"]:hover { color: var(--primary); border-color: var(--primary); }
+.action-btn.archive:hover { color: #f59e0b; border-color: #f59e0b; }
+.action-btn[title="کپی"]:hover { color: #10b981; border-color: #10b981; }
+.action-btn.delete:hover { color: #ef4444; border-color: #ef4444; }
+
+/* --- رنگ‌بندی کارت‌ها --- */
+.color-picker { display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+.color-option {
+    width: 25px; height: 25px; border-radius: 50%; cursor: pointer;
+    border: 2px solid #e5e7eb; transition: transform 0.2s;
+}
+.color-option:hover { transform: scale(1.2); }
+.color-option.selected { border-color: #333; transform: scale(1.1); box-shadow: 0 0 0 2px rgba(0,0,0,0.1); }
+
+/* --- تنظیمات اختصاصی مودال یادداشت (جمع و جور و وسط چین) --- */
+#noteModal .modal {
+    width: 100% !important;
+    max-width: 500px !important; /* عرض کمتر برای جمع و جور بودن */
+    height: auto !important; /* ارتفاع بر اساس محتوا */
+    min-height: auto !important; /* حذف حداقل ارتفاع تمام صفحه */
+    margin: 30px auto !important; /* وسط چین عمودی */
+    border-radius: 15px !important; /* گردی گوشه‌ها */
+    box-shadow: 0 20px 40px rgba(0,0,0,0.2) !important;
+    overflow: visible; /* برای نمایش سایه‌ها */
+}
+
+#noteModal .modal-header {
+    border-radius: 15px 15px 0 0;
+    padding: 15px 20px;
+    background: #fff;
+    border-bottom: 1px solid #f3f4f6;
+}
+
+#noteForm {
+    padding: 20px;
+}
+
+/* --- ریسپانسیو --- */
+@media (max-width: 1200px) {
+    .notes-grid { grid-template-columns: repeat(3, 1fr); }
+}
+
+@media (max-width: 992px) {
+    .notes-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 768px) {
+    .content-wrapper { padding: 15px; } /* کاهش پدینگ کلی در موبایل */
+    
+    .notes-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 15px;
+        padding: 15px;
+    }
+    
+    .notes-filter {
+        width: 100%;
+        justify-content: space-between;
+    }
+    
+    .filter-btn { flex: 1; text-align: center; }
+    
+    .search-box { max-width: 100%; }
+    
+    .notes-grid { 
+        grid-template-columns: 1fr; /* تک ستون در موبایل */
+        gap: 15px;
+    }
+    
+    .note-actions { 
+        opacity: 1; /* همیشه نمایش دکمه‌ها در موبایل */
+        position: relative;
+        background: transparent;
+        border-top: 1px solid rgba(0,0,0,0.05);
+        margin-top: 10px;
+        bottom: auto;
+        left: auto;
+        right: auto;
+        padding: 10px 0 0 0;
+    }
+    
+    .note-body { margin-bottom: 0; }
+    .note-date { position: relative; bottom: auto; right: auto; margin-bottom: 10px; display: block; text-align: left; }
+    
+    /* مودال در موبایل */
+    #noteModal .modal {
+        max-width: 90% !important; /* فاصله از کناره‌ها */
+        margin: 20px auto !important; /* وسط چین */
+        border-radius: 15px !important;
+    }
+}
