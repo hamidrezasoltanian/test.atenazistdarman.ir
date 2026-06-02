@@ -231,15 +231,14 @@ return [
         'perm' => 'reports_view',
         'svg' => '<line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line>',
         'submenu' => [
-            ['title' => 'گزارش کاربران', 'link' => 'admin/users_reports.php', 'perm' => 'rep_users'],
-            ['title' => 'گزارش مشتریان', 'link' => 'admin/customer_reports.php', 'perm' => 'rep_customers'],
-            ['title' => 'گزارش فروش', 'link' => '#', 'perm' => 'rep_sales'],
-            ['title' => 'گزارش پورسانت', 'link' => '#', 'perm' => 'rep_commission'],
-            ['title' => 'گزارش سال مالی', 'link' => '#', 'perm' => 'rep_fiscal'],
-            ['title' => 'گزارش مرخصی', 'link' => 'admin/leave_reports.php', 'perm' => 'rep_leaves'],
-            ['title' => 'گزارش داشبورد ماموریت', 'link' => 'admin/mission_reports.php', 'perm' => 'rep_missions'],
-            ['title' => 'گزارش ریز ماموریت‌ها', 'link' => 'admin/mission_detailed_reports.php', 'perm' => 'rep_missions'],
-            ['title' => 'گزارش ورود/خروج', 'link' => 'admin/attendance_reports.php', 'perm' => 'rep_attendance'],
+            ['title' => '💰 گزارش‌های مالی',      'link' => 'admin/fin_reports.php',        'perm' => 'rep_financial'],
+            ['title' => '📊 تحلیل CRM',            'link' => 'admin/crm_reports.php',        'perm' => 'rep_crm'],
+            ['title' => 'گزارش کاربران',            'link' => 'admin/users_reports.php',      'perm' => 'rep_users'],
+            ['title' => 'گزارش مشتریان',            'link' => 'admin/customer_reports.php',   'perm' => 'rep_customers'],
+            ['title' => 'گزارش مرخصی',              'link' => 'admin/leave_reports.php',       'perm' => 'rep_leaves'],
+            ['title' => 'گزارش ماموریت‌ها',          'link' => 'admin/mission_reports.php',    'perm' => 'rep_missions'],
+            ['title' => 'گزارش ریز ماموریت‌ها',      'link' => 'admin/mission_detailed_reports.php', 'perm' => 'rep_missions'],
+            ['title' => 'گزارش ورود/خروج',           'link' => 'admin/attendance_reports.php', 'perm' => 'rep_attendance'],
         ]
     ],
     [

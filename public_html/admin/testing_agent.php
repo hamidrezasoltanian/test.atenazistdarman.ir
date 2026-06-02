@@ -218,6 +218,9 @@ $phpFiles = [
     'admin/inv_storerooms.php'           => 'مدیریت انبارها',
     'admin/inv_receipts.php'             => 'رسید و حواله',
     'admin/inv_kardex.php'               => 'کاردکس کالا',
+    // مرحله ۴ — گزارش‌دهی
+    'admin/fin_reports.php'              => 'گزارش‌های مالی',
+    'admin/crm_reports.php'              => 'تحلیل CRM',
 ];
 $basedir = __DIR__ . '/../../public_html/';
 foreach ($phpFiles as $path => $label) {
