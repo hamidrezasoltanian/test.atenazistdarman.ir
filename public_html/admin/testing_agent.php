@@ -213,6 +213,11 @@ $phpFiles = [
     'admin/crm_provinces.php'            => 'مدیریت استان‌ها',
     'admin/crm_weekplan.php'             => 'برنامه هفتگی',
     'admin/crm_receivables.php'          => 'مطالبات',
+    // مرحله ۳ — انبارداری
+    'admin/inv_dashboard.php'            => 'داشبورد انبار',
+    'admin/inv_storerooms.php'           => 'مدیریت انبارها',
+    'admin/inv_receipts.php'             => 'رسید و حواله',
+    'admin/inv_kardex.php'               => 'کاردکس کالا',
 ];
 $basedir = __DIR__ . '/../../public_html/';
 foreach ($phpFiles as $path => $label) {
@@ -225,7 +230,36 @@ foreach ($phpFiles as $path => $label) {
     });
 }
 
-// ── تست ۱۴: CSRF توکن ─────────────────────────────────────────
+// ── تست ۱۴: جداول انبارداری مرحله ۳ ─────────────────────────
+$invTables = ['inv_storerooms','inv_tickets','inv_ticket_items'];
+foreach ($invTables as $tbl) {
+    $results[] = runTest("جدول انبار: $tbl", function() use ($pdo, $tbl) {
+        $r = $pdo->query("SHOW TABLES LIKE '$tbl'")->fetchColumn();
+        return $r ? true : ['pass'=>false,'msg'=>"جدول $tbl وجود ندارد — phase3 migration اجرا نشده"];
+    });
+}
+
+// ── تست ۱۵: CRUD رسید انبار ──────────────────────────────────
+$results[] = runTest('CRUD رسید انبار — ایجاد و حذف تستی', function() use ($pdo) {
+    try {
+        $pdo->beginTransaction();
+        // یک انبار پیش‌فرض پیدا کن
+        $srId = $pdo->query("SELECT id FROM inv_storerooms LIMIT 1")->fetchColumn();
+        if (!$srId) throw new Exception('هیچ انباری تعریف نشده (seed اجرا نشده)');
+        $stmt = $pdo->prepare("INSERT INTO inv_tickets (ticket_number,type,ticket_date,ticket_date_g,storeroom_id,description,status,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,NOW(),NOW())");
+        $stmt->execute(['TEST-RC-999','receipt',jdate('Y/m/d'),date('Y-m-d'),$srId,'تست خودکار','draft',(int)$_SESSION['user_id']]);
+        $tid = $pdo->lastInsertId();
+        if (!$tid) throw new Exception('INSERT رسید ناموفق');
+        $pdo->prepare("DELETE FROM inv_tickets WHERE id=?")->execute([$tid]);
+        $pdo->commit();
+        return ['pass'=>true,'detail'=>"رسید id=$tid ایجاد و حذف شد"];
+    } catch (Throwable $e) {
+        $pdo->rollBack();
+        return ['pass'=>false,'msg'=>$e->getMessage()];
+    }
+});
+
+// ── تست CSRF توکن ─────────────────────────────────────────────
 $results[] = runTest('سیستم CSRF Token فعال است', function() {
     $token = csrf_token();
     return (!empty($token) && strlen($token) >= 32) ? ['pass'=>true,'detail'=>"طول توکن: " . strlen($token)] : ['pass'=>false,'msg'=>'توکن CSRF خالی یا کوتاه'];

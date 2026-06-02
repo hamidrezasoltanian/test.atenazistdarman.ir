@@ -120,15 +120,17 @@ return [
         'svg' => '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline>'
     ],
     [
-        'title' => 'محصولات',
+        'title' => 'محصولات و انبار',
         'link' => '#',
         'icon_color' => '#ef4444',
         'perm' => 'products_view',
         'svg' => '<path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path><line x1="3" y1="6" x2="21" y2="6"></line><path d="M16 10a4 4 0 0 1-8 0"></path>',
         'submenu' => [
-            
-            ['title' => 'لیست محصولات', 'link' => 'admin/products_list.php', 'perm' => 'products_list'],
-           
+            ['title' => 'لیست محصولات',       'link' => 'admin/products_list.php',  'perm' => 'products_list'],
+            ['title' => '📦 داشبورد انبار',    'link' => 'admin/inv_dashboard.php',  'perm' => 'inv_view'],
+            ['title' => '🏭 مدیریت انبارها',   'link' => 'admin/inv_storerooms.php', 'perm' => 'inv_storerooms'],
+            ['title' => '📥 رسید و حواله',     'link' => 'admin/inv_receipts.php',   'perm' => 'inv_receipts'],
+            ['title' => '📋 کاردکس کالا',      'link' => 'admin/inv_kardex.php',     'perm' => 'inv_kardex'],
         ]
     ],
     [
