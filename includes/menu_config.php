@@ -163,9 +163,11 @@ return [
         'perm' => 'accounting_view',
         'svg' => '<line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>',
         'submenu' => [
-            ['title' => 'محاسبه پورسانت', 'link' => '#', 'perm' => 'acc_commission'],
-            ['title' => 'تایید مدیریت', 'link' => '#', 'perm' => 'acc_admin'],
-            ['title' => 'پرداخت ها', 'link' => '#', 'perm' => 'acc_payments'],
+            ['title' => '📊 داشبورد حسابداری', 'link' => 'admin/fin_accounting_dashboard.php', 'perm' => 'accounting_dashboard'],
+            ['title' => '🧾 فاکتور فروش',        'link' => 'admin/fin_invoice_sell.php',       'perm' => 'invoices_sell'],
+            ['title' => '👥 طرف حساب‌ها',          'link' => 'admin/fin_persons.php',            'perm' => 'fin_persons'],
+            ['title' => '📒 پلان حساب‌ها',          'link' => 'admin/fin_accounts.php',           'perm' => 'fin_chart'],
+            ['title' => '📄 مدیریت چک‌ها',          'link' => 'admin/fin_cheques.php',            'perm' => 'fin_cheques'],
         ]
     ],
     [
@@ -262,6 +264,13 @@ return [
         'icon_color' => '#dc2626',
         'perm' => 'backup_view',
         'svg' => '<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline>'
+    ],
+    [
+        'title' => '🤖 ایجنت تست',
+        'link' => 'admin/testing_agent.php',
+        'icon_color' => '#7c3aed',
+        'perm' => 'admin',
+        'svg' => '<path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18"></path>'
     ],
 ];
 ?>

@@ -1,0 +1,1426 @@
+/* =============================================================
+   فایل: public_html/assets/css/fin_module.css
+   سیستم طراحی ماژول مالی و حسابداری — آتنا زیست درمان
+   فونت: Vazirmatn (بارگذاری از dashboard.css)
+   جهت: راست به چپ (RTL)
+   رنگ‌بندی: Indigo / Emerald / Amber / Red
+   ============================================================= */
+
+/* ============================================================
+   متغیرهای سیستم رنگ
+   ============================================================ */
+:root {
+  --fin-primary:         #4f46e5;
+  --fin-primary-dark:    #3730a3;
+  --fin-primary-light:   #818cf8;
+  --fin-primary-bg:      #eef2ff;
+
+  --fin-success:         #10b981;
+  --fin-success-dark:    #059669;
+  --fin-success-light:   #6ee7b7;
+  --fin-success-bg:      #ecfdf5;
+
+  --fin-warning:         #f59e0b;
+  --fin-warning-dark:    #d97706;
+  --fin-warning-light:   #fcd34d;
+  --fin-warning-bg:      #fffbeb;
+
+  --fin-danger:          #ef4444;
+  --fin-danger-dark:     #dc2626;
+  --fin-danger-light:    #fca5a5;
+  --fin-danger-bg:       #fef2f2;
+
+  --fin-neutral:         #64748b;
+  --fin-neutral-dark:    #475569;
+  --fin-neutral-light:   #94a3b8;
+  --fin-neutral-bg:      #f1f5f9;
+
+  --fin-bg:              #f1f5f9;
+  --fin-card:            #ffffff;
+  --fin-border:          #e2e8f0;
+  --fin-border-light:    #f1f5f9;
+  --fin-text:            #1e293b;
+  --fin-text-muted:      #64748b;
+  --fin-text-light:      #94a3b8;
+
+  --fin-radius-sm:       8px;
+  --fin-radius:          12px;
+  --fin-radius-lg:       16px;
+  --fin-radius-xl:       20px;
+
+  --fin-shadow-sm:       0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
+  --fin-shadow:          0 4px 16px rgba(0,0,0,.08), 0 2px 6px rgba(0,0,0,.04);
+  --fin-shadow-lg:       0 10px 40px rgba(0,0,0,.12), 0 4px 12px rgba(0,0,0,.06);
+  --fin-shadow-primary:  0 4px 24px rgba(79,70,229,.28);
+  --fin-shadow-success:  0 4px 20px rgba(16,185,129,.25);
+  --fin-shadow-warning:  0 4px 20px rgba(245,158,11,.25);
+  --fin-shadow-danger:   0 4px 20px rgba(239,68,68,.25);
+
+  --fin-transition:      all .2s cubic-bezier(.4,0,.2,1);
+  --fin-transition-slow: all .35s cubic-bezier(.4,0,.2,1);
+}
+
+/* ============================================================
+   ریست پایه برای اجزای مالی
+   ============================================================ */
+.fin-page *,
+.fin-page *::before,
+.fin-page *::after {
+  box-sizing: border-box;
+}
+
+/* ============================================================
+   ۱. fin-page — پوشش صفحه
+   ============================================================ */
+.fin-page {
+  direction: rtl;
+  font-family: 'Vazirmatn', 'Tahoma', sans-serif;
+  background: var(--fin-bg);
+  min-height: 100vh;
+  padding: 24px 28px;
+  max-width: 1400px;
+  margin: 0 auto;
+  color: var(--fin-text);
+}
+
+/* ============================================================
+   ۲. fin-header — هدر گرادیانی صفحه
+   ============================================================ */
+.fin-header {
+  background: linear-gradient(135deg, var(--fin-primary) 0%, #6d28d9 50%, var(--fin-primary-dark) 100%);
+  border-radius: var(--fin-radius-lg);
+  padding: 28px 32px;
+  margin-bottom: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: var(--fin-shadow-primary);
+}
+
+/* دایره‌های دکوراتیو هدر */
+.fin-header::before {
+  content: '';
+  position: absolute;
+  top: -60px;
+  left: -60px;
+  width: 220px;
+  height: 220px;
+  background: rgba(255,255,255,.07);
+  border-radius: 50%;
+  pointer-events: none;
+}
+.fin-header::after {
+  content: '';
+  position: absolute;
+  bottom: -80px;
+  right: 80px;
+  width: 280px;
+  height: 280px;
+  background: rgba(255,255,255,.04);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.fin-header-title {
+  position: relative;
+  z-index: 1;
+}
+.fin-header-title h1 {
+  margin: 0 0 6px;
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: -.02em;
+}
+.fin-header-title p {
+  margin: 0;
+  font-size: .875rem;
+  color: rgba(255,255,255,.75);
+}
+
+.fin-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  position: relative;
+  z-index: 1;
+  flex-wrap: wrap;
+}
+
+/* ============================================================
+   ۳. fin-stat-card — کارت آمار
+   ============================================================ */
+.fin-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 18px;
+  margin-bottom: 28px;
+}
+
+/* کارت آماری جدید — بردر رنگی + آیکون + عدد */
+.fin-stat-card {
+  background: var(--fin-card);
+  border-radius: var(--fin-radius-lg);
+  padding: 22px 24px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  box-shadow: var(--fin-shadow-sm);
+  border: 1px solid var(--fin-border);
+  border-right: 4px solid var(--fin-neutral);
+  transition: var(--fin-transition);
+  position: relative;
+  overflow: hidden;
+}
+.fin-stat-card::after {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: linear-gradient(135deg, transparent 60%, rgba(0,0,0,.015));
+  pointer-events: none;
+}
+.fin-stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--fin-shadow);
+}
+
+/* واریانت‌های رنگی */
+.fin-stat-card.primary { border-right-color: var(--fin-primary); }
+.fin-stat-card.success { border-right-color: var(--fin-success); }
+.fin-stat-card.warning { border-right-color: var(--fin-warning); }
+.fin-stat-card.danger  { border-right-color: var(--fin-danger);  }
+
+/* رنگ‌بندی قدیمی — سازگاری با صفحات موجود */
+.fin-stat-card.blue   { background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%); color: #fff; border: none; }
+.fin-stat-card.green  { background: linear-gradient(135deg, #059669 0%, #10b981 100%); color: #fff; border: none; }
+.fin-stat-card.rose   { background: linear-gradient(135deg, #e11d48 0%, #f43f5e 100%); color: #fff; border: none; }
+.fin-stat-card.amber  { background: linear-gradient(135deg, #d97706 0%, #f59e0b 100%); color: #fff; border: none; }
+.fin-stat-card.purple { background: linear-gradient(135deg, #7c3aed 0%, #a78bfa 100%); color: #fff; border: none; }
+.fin-stat-card.cyan   { background: linear-gradient(135deg, #0891b2 0%, #22d3ee 100%); color: #fff; border: none; }
+
+.fin-stat-icon {
+  width: 54px;
+  height: 54px;
+  border-radius: var(--fin-radius);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4rem;
+  flex-shrink: 0;
+  transition: var(--fin-transition);
+}
+
+/* آیکون در واریانت رنگی جدید */
+.fin-stat-card.primary .fin-stat-icon { background: var(--fin-primary-bg); color: var(--fin-primary); }
+.fin-stat-card.success .fin-stat-icon { background: var(--fin-success-bg); color: var(--fin-success); }
+.fin-stat-card.warning .fin-stat-icon { background: var(--fin-warning-bg); color: var(--fin-warning); }
+.fin-stat-card.danger  .fin-stat-icon { background: var(--fin-danger-bg);  color: var(--fin-danger);  }
+
+/* آیکون در واریانت گرادیانی قدیمی */
+.fin-stat-card.blue   .fin-stat-icon,
+.fin-stat-card.green  .fin-stat-icon,
+.fin-stat-card.rose   .fin-stat-icon,
+.fin-stat-card.amber  .fin-stat-icon,
+.fin-stat-card.purple .fin-stat-icon,
+.fin-stat-card.cyan   .fin-stat-icon {
+  background: rgba(255,255,255,.20);
+  color: inherit;
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  font-size: 1.7rem;
+}
+
+.fin-stat-body { flex: 1; min-width: 0; }
+
+.fin-stat-number {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--fin-text);
+  line-height: 1.2;
+  letter-spacing: -.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* در واریانت گرادیانی، رنگ عدد از کارت ارث می‌برد */
+.fin-stat-card.blue   .fin-stat-number,
+.fin-stat-card.green  .fin-stat-number,
+.fin-stat-card.rose   .fin-stat-number,
+.fin-stat-card.amber  .fin-stat-number,
+.fin-stat-card.purple .fin-stat-number,
+.fin-stat-card.cyan   .fin-stat-number { color: inherit; font-size: 1.45rem; font-weight: 900; }
+
+/* پشتیبانی از .fin-stat-value قدیمی */
+.fin-stat-value {
+  font-size: 1.45rem;
+  font-weight: 900;
+  direction: ltr;
+  text-align: right;
+  line-height: 1.2;
+}
+.fin-stat-unit { font-size: .72rem; opacity: .75; margin-right: 4px; }
+
+.fin-stat-label {
+  font-size: .78rem;
+  color: var(--fin-text-muted);
+  margin-top: 3px;
+  font-weight: 500;
+}
+.fin-stat-card.blue   .fin-stat-label,
+.fin-stat-card.green  .fin-stat-label,
+.fin-stat-card.rose   .fin-stat-label,
+.fin-stat-card.amber  .fin-stat-label,
+.fin-stat-card.purple .fin-stat-label,
+.fin-stat-card.cyan   .fin-stat-label {
+  color: inherit;
+  opacity: .88;
+  font-size: .82rem;
+  font-weight: 700;
+  margin-bottom: 4px;
+  letter-spacing: .3px;
+}
+
+.fin-stat-change {
+  font-size: .75rem;
+  font-weight: 600;
+  margin-top: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 8px;
+  border-radius: 20px;
+}
+.fin-stat-change.up   { color: var(--fin-success); background: var(--fin-success-bg); }
+.fin-stat-change.down { color: var(--fin-danger);  background: var(--fin-danger-bg);  }
+
+/* ============================================================
+   ۴. fin-card — کارت سفید
+   ============================================================ */
+.fin-card {
+  background: var(--fin-card);
+  border-radius: var(--fin-radius-lg);
+  box-shadow: var(--fin-shadow-sm);
+  border: 1px solid var(--fin-border);
+  overflow: hidden;
+  margin-bottom: 24px;
+  transition: var(--fin-transition);
+}
+.fin-card:hover { box-shadow: var(--fin-shadow); }
+
+/* پنل قدیمی — سازگاری */
+.fin-panel {
+  background: var(--fin-card);
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 2px 8px rgba(0,0,0,.03);
+}
+.fin-panel-title {
+  font-size: 1rem;
+  font-weight: 900;
+  color: var(--fin-text);
+  margin-bottom: 18px;
+  padding-bottom: 14px;
+  border-bottom: 2px solid var(--fin-border-light);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.fin-panel-title .title-icon {
+  width: 32px; height: 32px;
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1rem;
+  background: var(--fin-primary-bg);
+}
+
+/* ============================================================
+   ۵. fin-card-header — هدر کارت
+   ============================================================ */
+.fin-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--fin-border-light);
+  background: linear-gradient(180deg, #fafbff 0%, #ffffff 100%);
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.fin-card-header-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.fin-card-header-title h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--fin-text);
+}
+.fin-card-header-title .fin-card-icon {
+  width: 36px; height: 36px;
+  border-radius: var(--fin-radius-sm);
+  background: var(--fin-primary-bg);
+  color: var(--fin-primary);
+  display: flex; align-items: center; justify-content: center;
+  font-size: .95rem;
+}
+.fin-card-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.fin-card-body { padding: 24px; }
+.fin-card-body.no-padding { padding: 0; }
+
+/* ============================================================
+   ۶. fin-table — جدول مدرن
+   ============================================================ */
+.fin-table-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.fin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .875rem;
+}
+
+.fin-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+.fin-table thead tr { background: #f8fafc; }
+.fin-table thead th {
+  padding: 12px 14px;
+  text-align: right;
+  font-size: .78rem;
+  font-weight: 700;
+  color: var(--fin-text-muted);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  border-bottom: 2px solid var(--fin-border);
+  white-space: nowrap;
+}
+.fin-table thead th:first-child { padding-right: 24px; }
+.fin-table thead th:last-child  { padding-left: 24px;  }
+
+.fin-table tbody tr {
+  border-bottom: 1px solid var(--fin-border-light);
+  transition: var(--fin-transition);
+}
+.fin-table tbody tr:nth-child(even) { background: #fafbff; }
+.fin-table tbody tr:hover { background: var(--fin-primary-bg); cursor: pointer; }
+.fin-table tbody tr:last-child { border-bottom: none; }
+
+.fin-table tbody td {
+  padding: 12px 14px;
+  color: var(--fin-text);
+  vertical-align: middle;
+}
+.fin-table tbody td:first-child { padding-right: 24px; }
+.fin-table tbody td:last-child  { padding-left: 24px;  }
+
+.fin-table tfoot tr {
+  background: #f8fafc;
+  border-top: 2px solid var(--fin-border);
+}
+.fin-table tfoot td {
+  padding: 13px 14px;
+  font-weight: 700;
+  color: var(--fin-text);
+}
+.fin-table tfoot td:first-child { padding-right: 24px; }
+.fin-table tfoot td:last-child  { padding-left: 24px;  }
+
+.fin-table .td-number {
+  font-weight: 700;
+  color: var(--fin-primary);
+  font-size: .8rem;
+}
+.fin-table .td-amount {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.fin-table .td-amount.debit  { color: var(--fin-danger);  }
+.fin-table .td-amount.credit { color: var(--fin-success); }
+
+/* ردیف‌های هایلایت */
+.row-overdue { background: #fff1f2 !important; }
+.row-overdue td { color: #be123c !important; }
+.row-due-soon { background: #fffbeb !important; }
+
+/* ============================================================
+   ۷ و ۸. fin-form-group + ورودی‌ها
+   ============================================================ */
+.fin-form-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin-bottom: 4px;
+}
+/* فرم دو ستونه قدیمی */
+.fin-form-row-2 { grid-template-columns: 1fr 1fr; gap: 14px; }
+
+.fin-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: relative;
+  margin-bottom: 16px;
+}
+
+.fin-form-group label,
+.fin-label {
+  display: block;
+  font-size: .82rem;
+  font-weight: 700;
+  color: var(--fin-text-muted);
+  margin-bottom: 2px;
+  transition: var(--fin-transition);
+}
+.fin-form-group label .req { color: var(--fin-danger); }
+.fin-form-group:focus-within label { color: var(--fin-primary); }
+
+.fin-input,
+.fin-select,
+.fin-textarea {
+  width: 100%;
+  padding: 9px 12px;
+  background: #fff;
+  border: 1.5px solid var(--fin-border);
+  border-radius: var(--fin-radius-sm);
+  font-size: .875rem;
+  font-family: 'Vazirmatn', 'Tahoma', sans-serif;
+  color: var(--fin-text);
+  direction: rtl;
+  transition: var(--fin-transition);
+  outline: none;
+  appearance: none;
+  -webkit-appearance: none;
+}
+.fin-input:hover,
+.fin-select:hover,
+.fin-textarea:hover {
+  border-color: var(--fin-primary-light);
+}
+.fin-input:focus,
+.fin-select:focus,
+.fin-textarea:focus {
+  border-color: var(--fin-primary);
+  box-shadow: 0 0 0 3px rgba(79,70,229,.12);
+}
+.fin-input::placeholder,
+.fin-textarea::placeholder { color: var(--fin-text-light); }
+
+.fin-input.ltr-num { direction: ltr; text-align: right; }
+
+.fin-textarea {
+  min-height: 80px;
+  resize: vertical;
+  line-height: 1.6;
+}
+
+.fin-select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2364748b' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: left 12px center;
+  padding-left: 36px;
+  cursor: pointer;
+}
+
+.fin-input.is-invalid,
+.fin-select.is-invalid,
+.fin-textarea.is-invalid {
+  border-color: var(--fin-danger);
+  box-shadow: 0 0 0 3px rgba(239,68,68,.1);
+}
+
+/* گروه ورودی با پیوست */
+.fin-input-group {
+  display: flex;
+  align-items: stretch;
+}
+.fin-input-group .fin-input { border-radius: 0; flex: 1; }
+.fin-input-group .fin-input:first-child { border-radius: 0 var(--fin-radius-sm) var(--fin-radius-sm) 0; }
+.fin-input-group .fin-input:last-child  { border-radius: var(--fin-radius-sm) 0 0 var(--fin-radius-sm); }
+.fin-input-addon {
+  padding: 9px 12px;
+  background: var(--fin-neutral-bg);
+  border: 1.5px solid var(--fin-border);
+  border-right: none;
+  font-size: .8rem;
+  color: var(--fin-text-muted);
+  font-weight: 600;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+}
+
+.fin-help-text  { font-size: .75rem; color: var(--fin-text-light); margin-top: 4px; }
+.fin-error-text { font-size: .75rem; color: var(--fin-danger);     margin-top: 4px; }
+
+/* فیلتر قدیمی — سازگاری */
+.fin-filter-bar {
+  background: #f8fafc;
+  border: 1px solid var(--fin-border);
+  border-radius: var(--fin-radius);
+  padding: 16px 20px;
+  margin-bottom: 20px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+}
+.fin-filter-group { display: flex; flex-direction: column; gap: 5px; min-width: 130px; flex: 1; }
+.fin-filter-group label { font-size: .78rem; font-weight: 700; color: var(--fin-text-muted); }
+
+/* ============================================================
+   ۹. fin-btn — دکمه‌ها
+   ============================================================ */
+.fin-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 9px 18px;
+  font-size: .875rem;
+  font-weight: 700;
+  font-family: 'Vazirmatn', 'Tahoma', sans-serif;
+  border: none;
+  border-radius: var(--fin-radius-sm);
+  cursor: pointer;
+  transition: var(--fin-transition);
+  text-decoration: none;
+  white-space: nowrap;
+  position: relative;
+  overflow: hidden;
+}
+.fin-btn:active { transform: scale(.98); }
+.fin-btn:disabled { opacity: .55; cursor: not-allowed; transform: none !important; }
+
+/* Primary — Indigo */
+.fin-btn-primary {
+  background: linear-gradient(135deg, var(--fin-primary), #6d28d9);
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(79,70,229,.3);
+}
+.fin-btn-primary:hover {
+  box-shadow: 0 4px 16px rgba(79,70,229,.4);
+  transform: translateY(-1px);
+}
+
+/* Success — Emerald */
+.fin-btn-success {
+  background: linear-gradient(135deg, var(--fin-success), #047857);
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(16,185,129,.3);
+}
+.fin-btn-success:hover {
+  box-shadow: 0 4px 16px rgba(16,185,129,.4);
+  transform: translateY(-1px);
+}
+
+/* Danger — Red */
+.fin-btn-danger {
+  background: linear-gradient(135deg, var(--fin-danger), #b91c1c);
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(239,68,68,.3);
+}
+.fin-btn-danger:hover {
+  box-shadow: 0 4px 16px rgba(239,68,68,.4);
+  transform: translateY(-1px);
+}
+
+/* Warning — Amber */
+.fin-btn-warning,
+.fin-btn-amber {
+  background: linear-gradient(135deg, var(--fin-warning), #b45309);
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(245,158,11,.3);
+}
+.fin-btn-warning:hover,
+.fin-btn-amber:hover {
+  box-shadow: 0 4px 16px rgba(245,158,11,.4);
+  transform: translateY(-1px);
+}
+
+/* Ghost / Outline */
+.fin-btn-ghost,
+.fin-btn-outline {
+  background: #ffffff;
+  color: var(--fin-text-muted);
+  border: 1.5px solid var(--fin-border);
+}
+.fin-btn-ghost:hover,
+.fin-btn-outline:hover {
+  background: var(--fin-neutral-bg);
+  border-color: var(--fin-neutral-light);
+  color: var(--fin-text);
+}
+
+/* Blue (سازگاری با کدهای قدیمی) */
+.fin-btn-blue { background: #2563eb; color: #fff; }
+.fin-btn-blue:hover { background: #1d4ed8; }
+
+/* اندازه‌ها */
+.fin-btn-sm   { padding: 5px 12px; font-size: .78rem; border-radius: 6px; }
+.fin-btn-lg   { padding: 12px 26px; font-size: 1rem; }
+.fin-btn-icon { padding: 7px 10px; width: 36px; height: 36px; }
+.fin-btn-icon.fin-btn-sm { width: 30px; height: 30px; padding: 0; }
+
+/* دکمه‌های سریع */
+.fin-quick-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 24px; }
+.fin-quick-btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 10px 20px;
+  border-radius: 10px;
+  font-family: 'Vazirmatn', Tahoma, sans-serif;
+  font-size: .875rem;
+  font-weight: 700;
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 2px 6px rgba(0,0,0,.08);
+  transition: var(--fin-transition);
+}
+.fin-quick-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 14px rgba(0,0,0,.12); }
+.fin-quick-btn.blue   { background: #2563eb; color: #fff; }
+.fin-quick-btn.green  { background: #059669; color: #fff; }
+.fin-quick-btn.amber  { background: #d97706; color: #fff; }
+.fin-quick-btn.purple { background: #7c3aed; color: #fff; }
+
+/* ============================================================
+   ۱۰. fin-badge — برچسب وضعیت
+   ============================================================ */
+.fin-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: .75rem;
+  font-weight: 700;
+  letter-spacing: .01em;
+  white-space: nowrap;
+}
+.fin-badge::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* وضعیت‌های جدید */
+.fin-badge-pending {
+  background: var(--fin-warning-bg);
+  color: var(--fin-warning-dark);
+  border: 1px solid rgba(245,158,11,.2);
+}
+.fin-badge-pending::before { background: var(--fin-warning); }
+
+.fin-badge-confirmed {
+  background: var(--fin-success-bg);
+  color: var(--fin-success-dark);
+  border: 1px solid rgba(16,185,129,.2);
+}
+.fin-badge-confirmed::before { background: var(--fin-success); }
+
+.fin-badge-cancelled {
+  background: #f1f5f9;
+  color: var(--fin-neutral-dark);
+  border: 1px solid rgba(100,116,139,.2);
+}
+.fin-badge-cancelled::before { background: var(--fin-neutral-light); }
+
+.fin-badge-paid {
+  background: var(--fin-success-bg);
+  color: var(--fin-success-dark);
+  border: 1px solid rgba(16,185,129,.2);
+}
+.fin-badge-paid::before { background: var(--fin-success); }
+
+.fin-badge-unpaid {
+  background: var(--fin-danger-bg);
+  color: var(--fin-danger-dark);
+  border: 1px solid rgba(239,68,68,.2);
+}
+.fin-badge-unpaid::before { background: var(--fin-danger); }
+
+.fin-badge-partial {
+  background: var(--fin-primary-bg);
+  color: var(--fin-primary-dark);
+  border: 1px solid rgba(79,70,229,.2);
+}
+.fin-badge-partial::before { background: var(--fin-primary); }
+
+.fin-badge-draft {
+  background: #f1f5f9;
+  color: var(--fin-neutral-dark);
+  border: 1px solid rgba(100,116,139,.15);
+}
+.fin-badge-draft::before { background: var(--fin-neutral-light); }
+
+/* وضعیت‌های قدیمی — سازگاری با صفحات موجود */
+.fin-badge.pending     { background: #fffbeb; color: #d97706; border: 1px solid #fde68a; }
+.fin-badge.cleared     { background: #ecfdf5; color: #059669; border: 1px solid #6ee7b7; }
+.fin-badge.bounced     { background: #fff1f2; color: #e11d48; border: 1px solid #fecdd3; }
+.fin-badge.transferred { background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; }
+.fin-badge.sell        { background: #ecfdf5; color: #059669; border: 1px solid #6ee7b7; }
+.fin-badge.buy         { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+.fin-badge.active      { background: #ecfdf5; color: #059669; border: 1px solid #6ee7b7; }
+.fin-badge.inactive    { background: #f1f5f9; color: #64748b; border: 1px solid #cbd5e1; }
+/* پنهان کردن نقطه در بج‌های قدیمی */
+.fin-badge.pending::before,
+.fin-badge.cleared::before,
+.fin-badge.bounced::before,
+.fin-badge.transferred::before,
+.fin-badge.sell::before,
+.fin-badge.buy::before,
+.fin-badge.active::before,
+.fin-badge.inactive::before { display: none; }
+
+/* ============================================================
+   ۱۱. fin-modal — مودال
+   ============================================================ */
+.fin-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15,23,42,.55);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  opacity: 0;
+  visibility: hidden;
+  transition: var(--fin-transition-slow);
+}
+.fin-modal-overlay.active {
+  opacity: 1;
+  visibility: visible;
+}
+
+.fin-modal {
+  background: var(--fin-card);
+  border-radius: var(--fin-radius-xl);
+  box-shadow: var(--fin-shadow-lg);
+  width: 100%;
+  max-width: 680px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  transform: translateY(24px) scale(.97);
+  transition: var(--fin-transition-slow);
+  overflow: hidden;
+}
+.fin-modal-overlay.active .fin-modal {
+  transform: translateY(0) scale(1);
+}
+
+.fin-modal.fin-modal-sm { max-width: 440px; }
+.fin-modal.fin-modal-lg { max-width: 900px; }
+.fin-modal.fin-modal-xl { max-width: 1100px; }
+
+.fin-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--fin-border);
+  background: linear-gradient(135deg, var(--fin-primary-bg) 0%, #f8faff 100%);
+  gap: 12px;
+  flex-shrink: 0;
+}
+.fin-modal-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.fin-modal-title h4 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--fin-text);
+}
+.fin-modal-title .fin-modal-icon {
+  width: 38px; height: 38px;
+  border-radius: var(--fin-radius-sm);
+  background: var(--fin-primary);
+  color: #ffffff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+.fin-modal-close {
+  width: 34px; height: 34px;
+  border-radius: var(--fin-radius-sm);
+  border: none;
+  background: transparent;
+  color: var(--fin-text-muted);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.1rem;
+  transition: var(--fin-transition);
+  flex-shrink: 0;
+}
+.fin-modal-close:hover { background: var(--fin-danger-bg); color: var(--fin-danger); }
+
+.fin-modal-body {
+  padding: 24px;
+  overflow-y: auto;
+  flex: 1;
+}
+.fin-modal-footer {
+  padding: 16px 24px;
+  border-top: 1px solid var(--fin-border);
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  background: #fafbff;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
+/* ============================================================
+   کشوی فرم (Drawer) — سازگاری با کدهای موجود
+   ============================================================ */
+.fin-drawer-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(15,23,42,.45);
+  z-index: 900;
+}
+.fin-drawer-overlay.open { display: block; }
+
+.fin-drawer {
+  position: fixed;
+  top: 0; left: 0;
+  width: 440px; max-width: 96vw;
+  height: 100%;
+  background: var(--fin-card);
+  box-shadow: 4px 0 30px rgba(0,0,0,.15);
+  z-index: 901;
+  transform: translateX(-100%);
+  transition: transform .3s cubic-bezier(.4,0,.2,1);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+.fin-drawer.open { transform: translateX(0); }
+
+.fin-drawer-header {
+  padding: 18px 22px;
+  background: linear-gradient(135deg, #1e3a8a, #2563eb);
+  color: #fff;
+  font-weight: 900;
+  font-size: 1rem;
+  display: flex; align-items: center; justify-content: space-between;
+  flex-shrink: 0;
+}
+.fin-drawer-close {
+  background: rgba(255,255,255,.18);
+  border: none; border-radius: 8px;
+  color: #fff; cursor: pointer;
+  width: 32px; height: 32px;
+  font-size: 1.2rem;
+  display: flex; align-items: center; justify-content: center;
+  transition: background .2s;
+}
+.fin-drawer-close:hover { background: rgba(255,255,255,.30); }
+.fin-drawer-body { flex: 1; overflow-y: auto; padding: 22px; }
+.fin-drawer-footer {
+  padding: 16px 22px;
+  border-top: 1px solid var(--fin-border);
+  background: #f8fafc;
+  display: flex; gap: 10px; justify-content: flex-end;
+  flex-shrink: 0;
+}
+
+/* ============================================================
+   ۱۲. fin-invoice-row — ردیف فاکتور
+   ============================================================ */
+.fin-invoice-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .85rem;
+}
+.fin-invoice-table thead th {
+  padding: 10px 8px;
+  background: var(--fin-primary-bg);
+  color: var(--fin-primary-dark);
+  font-weight: 700;
+  font-size: .75rem;
+  text-align: right;
+  border-bottom: 2px solid rgba(79,70,229,.15);
+}
+.fin-invoice-row {
+  border-bottom: 1px dashed var(--fin-border);
+  transition: var(--fin-transition);
+}
+.fin-invoice-row:hover { background: #fafbff; }
+.fin-invoice-row td {
+  padding: 8px 6px;
+  vertical-align: middle;
+}
+.fin-invoice-row .fin-input {
+  padding: 7px 10px;
+  font-size: .82rem;
+  min-width: 80px;
+}
+.fin-invoice-row-total {
+  font-weight: 700;
+  color: var(--fin-primary);
+  text-align: center;
+  font-size: .9rem;
+  white-space: nowrap;
+}
+.fin-invoice-add-row {
+  margin-top: 10px;
+  display: flex;
+  justify-content: flex-end;
+}
+.fin-invoice-summary {
+  background: var(--fin-neutral-bg);
+  border-radius: var(--fin-radius);
+  padding: 16px 20px;
+  margin-top: 16px;
+}
+.fin-invoice-summary-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 7px 0;
+  font-size: .9rem;
+  border-bottom: 1px solid var(--fin-border-light);
+}
+.fin-invoice-summary-row:last-child {
+  border-bottom: none;
+  font-weight: 800;
+  font-size: 1rem;
+  color: var(--fin-primary);
+  padding-top: 12px;
+}
+.fin-invoice-summary-label { color: var(--fin-text-muted); }
+.fin-invoice-summary-value { font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* ============================================================
+   ۱۳. fin-tabs — تب‌ناوبری
+   ============================================================ */
+.fin-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 2px solid var(--fin-border);
+  margin-bottom: 20px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.fin-tabs::-webkit-scrollbar { display: none; }
+
+.fin-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 11px 18px;
+  font-size: .875rem;
+  font-weight: 700;
+  color: var(--fin-text-muted);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+  transition: var(--fin-transition);
+  white-space: nowrap;
+  font-family: 'Vazirmatn', 'Tahoma', sans-serif;
+  border-radius: var(--fin-radius-sm) var(--fin-radius-sm) 0 0;
+  text-decoration: none;
+}
+.fin-tab:hover { color: var(--fin-primary); background: var(--fin-primary-bg); }
+.fin-tab.active {
+  color: var(--fin-primary);
+  border-bottom-color: var(--fin-primary);
+  background: var(--fin-primary-bg);
+}
+.fin-tab .fin-tab-badge {
+  font-size: .7rem;
+  padding: 1px 7px;
+  border-radius: 20px;
+  background: var(--fin-primary);
+  color: #ffffff;
+  font-weight: 700;
+}
+.fin-tab-content       { display: none; }
+.fin-tab-content.active { display: block; }
+
+/* ============================================================
+   ۱۴. fin-empty-state — حالت خالی
+   ============================================================ */
+.fin-empty-state,
+.fin-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 24px;
+  text-align: center;
+  color: var(--fin-text-muted);
+}
+.fin-empty-icon,
+.fin-empty .empty-icon {
+  width: 80px; height: 80px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--fin-primary-bg), var(--fin-neutral-bg));
+  display: flex; align-items: center; justify-content: center;
+  font-size: 2rem;
+  margin-bottom: 20px;
+  color: var(--fin-primary-light);
+}
+.fin-empty .empty-icon { width: auto; height: auto; background: none; font-size: 3rem; }
+.fin-empty-state h4 {
+  margin: 0 0 8px;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--fin-text);
+}
+.fin-empty-state p,
+.fin-empty p {
+  margin: 0 0 20px;
+  font-size: .875rem;
+  color: var(--fin-text-muted);
+  max-width: 300px;
+}
+
+/* ============================================================
+   ۱۵. fin-search-box — جعبه جستجو
+   ============================================================ */
+.fin-search-box {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+.fin-search-box .fin-search-icon {
+  position: absolute;
+  right: 12px;
+  color: var(--fin-text-light);
+  font-size: .9rem;
+  pointer-events: none;
+  z-index: 1;
+}
+.fin-search-box .fin-input { padding-right: 38px; min-width: 240px; }
+.fin-search-box .fin-search-clear {
+  position: absolute;
+  left: 10px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--fin-text-light);
+  padding: 4px;
+  border-radius: 4px;
+  display: none;
+  transition: var(--fin-transition);
+}
+.fin-search-box .fin-search-clear:hover { color: var(--fin-danger); background: var(--fin-danger-bg); }
+.fin-search-box.has-value .fin-search-clear { display: flex; }
+
+/* ============================================================
+   هشدار — Alert
+   ============================================================ */
+.fin-alert {
+  border-radius: var(--fin-radius);
+  padding: 14px 18px;
+  margin-bottom: 18px;
+  font-size: .875rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border: 1px solid transparent;
+}
+.fin-alert-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 1px; }
+
+.fin-alert.danger,  .fin-alert-danger  { background: #fff1f2; border-color: #fecdd3; color: #9f1239; }
+.fin-alert.warning, .fin-alert-warning { background: #fffbeb; border-color: #fde68a; color: #78350f; }
+.fin-alert.info,    .fin-alert-primary { background: var(--fin-primary-bg); border-color: rgba(79,70,229,.2); color: var(--fin-primary-dark); }
+.fin-alert.success, .fin-alert-success { background: #ecfdf5; border-color: #6ee7b7; color: #064e3b; }
+
+/* ============================================================
+   لیست بانک و صندوق
+   ============================================================ */
+.fin-account-list { display: flex; flex-direction: column; gap: 10px; }
+.fin-account-item {
+  display: flex; align-items: center; gap: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--fin-border);
+  border-radius: var(--fin-radius);
+  background: #f9fafb;
+  transition: var(--fin-transition);
+}
+.fin-account-item:hover { background: var(--fin-primary-bg); }
+.fin-account-avatar {
+  width: 42px; height: 42px;
+  border-radius: var(--fin-radius);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.3rem;
+  flex-shrink: 0;
+}
+.fin-account-avatar.bank { background: var(--fin-primary-bg); }
+.fin-account-avatar.cash { background: var(--fin-success-bg); }
+.fin-account-info { flex: 1; min-width: 0; }
+.fin-account-name { font-weight: 700; font-size: .9rem; color: var(--fin-text); }
+.fin-account-sub  { font-size: .78rem; color: var(--fin-text-muted); margin-top: 2px; }
+.fin-account-balance {
+  font-size: 1.1rem;
+  font-weight: 900;
+  color: var(--fin-text);
+  white-space: nowrap;
+}
+.fin-account-balance .unit { font-size: .7rem; color: var(--fin-text-light); margin-right: 3px; }
+
+/* ============================================================
+   تقویم چک
+   ============================================================ */
+.fin-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+.fin-cal-header-day {
+  text-align: center;
+  font-size: .72rem; font-weight: 700;
+  color: var(--fin-text-muted);
+  padding: 6px 2px;
+}
+.fin-cal-cell {
+  min-height: 56px;
+  border: 1px solid var(--fin-border);
+  border-radius: 6px;
+  padding: 4px;
+  background: var(--fin-card);
+  position: relative;
+  font-size: .72rem;
+}
+.fin-cal-cell.empty  { background: #f8fafc; border-color: transparent; }
+.fin-cal-cell.today  { border-color: var(--fin-primary); background: var(--fin-primary-bg); }
+.fin-cal-cell .day-num { font-weight: 700; color: #475569; font-size: .78rem; margin-bottom: 3px; }
+.fin-cal-cell.today .day-num { color: var(--fin-primary); }
+.fin-cal-dot {
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  margin: 1px;
+  cursor: pointer;
+}
+.fin-cal-dot.received { background: var(--fin-success); }
+.fin-cal-dot.issued   { background: var(--fin-danger); }
+.fin-cal-dot.overdue  { background: #7c3aed; }
+
+/* ============================================================
+   Progress Bar
+   ============================================================ */
+.fin-progress {
+  height: 8px;
+  background: var(--fin-border);
+  border-radius: 20px;
+  overflow: hidden;
+}
+.fin-progress-bar {
+  height: 100%;
+  border-radius: 20px;
+  background: linear-gradient(90deg, var(--fin-primary), var(--fin-primary-light));
+  transition: width .6s cubic-bezier(.4,0,.2,1);
+}
+.fin-progress-bar.success { background: linear-gradient(90deg, var(--fin-success), var(--fin-success-light)); }
+.fin-progress-bar.warning { background: linear-gradient(90deg, var(--fin-warning), var(--fin-warning-light)); }
+.fin-progress-bar.danger  { background: linear-gradient(90deg, var(--fin-danger),  var(--fin-danger-light));  }
+
+/* ============================================================
+   Divider
+   ============================================================ */
+.fin-divider { height: 1px; background: var(--fin-border); margin: 20px 0; }
+.fin-divider-label {
+  display: flex; align-items: center; gap: 12px;
+  margin: 20px 0;
+  font-size: .75rem; color: var(--fin-text-light);
+  font-weight: 600; text-transform: uppercase; letter-spacing: .06em;
+}
+.fin-divider-label::before,
+.fin-divider-label::after { content: ''; flex: 1; height: 1px; background: var(--fin-border); }
+
+/* ============================================================
+   اطلاعات گرید
+   ============================================================ */
+.fin-info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+.fin-info-item { display: flex; flex-direction: column; gap: 4px; }
+.fin-info-label {
+  font-size: .75rem; font-weight: 600;
+  color: var(--fin-text-light);
+  text-transform: uppercase; letter-spacing: .04em;
+}
+.fin-info-value { font-size: .9rem; font-weight: 600; color: var(--fin-text); }
+
+/* ============================================================
+   صفحه‌بندی
+   ============================================================ */
+.fin-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 20px;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--fin-border-light);
+}
+.fin-page-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px;
+  border-radius: var(--fin-radius-sm);
+  border: 1.5px solid var(--fin-border);
+  background: var(--fin-card);
+  color: var(--fin-text-muted);
+  font-size: .85rem; font-weight: 600;
+  cursor: pointer;
+  transition: var(--fin-transition);
+  font-family: 'Vazirmatn', 'Tahoma', sans-serif;
+  text-decoration: none;
+}
+.fin-page-btn:hover { border-color: var(--fin-primary-light); color: var(--fin-primary); background: var(--fin-primary-bg); }
+.fin-page-btn.active { background: var(--fin-primary); border-color: var(--fin-primary); color: #ffffff; box-shadow: 0 2px 8px rgba(79,70,229,.3); }
+.fin-page-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+/* ============================================================
+   Skeleton Loader
+   ============================================================ */
+.fin-skeleton {
+  background: linear-gradient(90deg, #f1f5f9 25%, #e8edf2 50%, #f1f5f9 75%);
+  background-size: 200% 100%;
+  animation: fin-skeleton-wave 1.5s infinite;
+  border-radius: var(--fin-radius-sm);
+  height: 16px;
+}
+@keyframes fin-skeleton-wave {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ============================================================
+   Animations
+   ============================================================ */
+@keyframes fin-fade-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fin-scale-in {
+  from { opacity: 0; transform: scale(.95); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.fin-animate-fade  { animation: fin-fade-in .3s ease forwards; }
+.fin-animate-scale { animation: fin-scale-in .25s ease forwards; }
+
+/* ============================================================
+   آپلود فایل
+   ============================================================ */
+.fin-upload-zone {
+  border: 2px dashed var(--fin-border);
+  border-radius: var(--fin-radius);
+  padding: 32px;
+  text-align: center;
+  cursor: pointer;
+  transition: var(--fin-transition);
+  background: var(--fin-neutral-bg);
+  color: var(--fin-text-muted);
+}
+.fin-upload-zone:hover,
+.fin-upload-zone.dragging {
+  border-color: var(--fin-primary);
+  background: var(--fin-primary-bg);
+  color: var(--fin-primary);
+}
+
+/* ============================================================
+   ریسپانسیو — ۱۲۰۰px
+   ============================================================ */
+@media (max-width: 1200px) {
+  .fin-stats-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* ============================================================
+   ریسپانسیو — موبایل ۷۶۸px
+   ============================================================ */
+@media (max-width: 768px) {
+  .fin-page { padding: 16px; }
+
+  .fin-header {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 20px;
+    gap: 14px;
+  }
+  .fin-header-title h1 { font-size: 1.25rem; }
+  .fin-header-actions { width: 100%; }
+
+  .fin-stats-grid { grid-template-columns: 1fr 1fr; gap: 12px; }
+  .fin-stat-card  { padding: 16px; }
+  .fin-stat-number { font-size: 1.2rem; }
+
+  .fin-card-header {
+    padding: 14px 16px;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .fin-card-body  { padding: 16px; }
+
+  .fin-table { display: block; overflow-x: auto; white-space: nowrap; }
+  .fin-table thead th:first-child,
+  .fin-table tbody td:first-child,
+  .fin-table tfoot td:first-child { padding-right: 14px; }
+  .fin-table thead th:last-child,
+  .fin-table tbody td:last-child,
+  .fin-table tfoot td:last-child  { padding-left: 14px; }
+
+  .fin-form-row   { grid-template-columns: 1fr; }
+  .fin-form-row-2 { grid-template-columns: 1fr; }
+  .fin-filter-bar { flex-direction: column; }
+
+  .fin-drawer { width: 100%; left: 0; }
+
+  .fin-modal-overlay { align-items: flex-end; padding: 0; }
+  .fin-modal {
+    max-width: 100%;
+    max-height: 95vh;
+    border-radius: var(--fin-radius-lg) var(--fin-radius-lg) 0 0;
+  }
+
+  .fin-tabs  { gap: 2px; }
+  .fin-tab   { padding: 11px 12px; font-size: .8rem; }
+
+  .fin-search-box .fin-input { min-width: 180px; }
+  .fin-cal-grid  { gap: 2px; }
+  .fin-cal-cell  { min-height: 40px; }
+}
+
+/* ============================================================
+   ریسپانسیو — ۴۸۰px
+   ============================================================ */
+@media (max-width: 480px) {
+  .fin-stats-grid { grid-template-columns: 1fr; }
+  .fin-stat-card  { border-right-width: 3px; }
+  .fin-header-actions .fin-btn span { display: none; }
+}
