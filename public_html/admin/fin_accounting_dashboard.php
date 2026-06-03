@@ -347,10 +347,10 @@ include __DIR__ . '/../../templates/sidebar.php';
             </div>
         </div>
         <div class="fin-quick-actions" style="margin-bottom:0;">
-            <button class="fin-quick-btn blue" onclick="window.location.href='fin_invoices.php?new=1'">
+            <button class="fin-quick-btn blue" onclick="window.location.href='fin_invoice_sell.php?new=1'">
                 ➕ فاکتور جدید
             </button>
-            <button class="fin-quick-btn green" onclick="window.location.href='fin_receipts.php?new=1'">
+            <button class="fin-quick-btn green" onclick="window.location.href='fin_receive_pay.php'">
                 💰 دریافت وجه
             </button>
             <button class="fin-quick-btn amber" onclick="window.location.href='fin_cheques.php?new=1'">
@@ -427,7 +427,7 @@ include __DIR__ . '/../../templates/sidebar.php';
                 <div class="fin-panel-title">
                     <span class="title-icon" style="background:#eff6ff;">🧾</span>
                     آخرین فاکتورهای فروش
-                    <a href="fin_invoices.php" style="margin-right:auto;font-size:0.8rem;color:#2563eb;text-decoration:none;font-weight:600;">مشاهده همه ←</a>
+                    <a href="fin_invoice_sell.php" style="margin-right:auto;font-size:0.8rem;color:#2563eb;text-decoration:none;font-weight:600;">مشاهده همه ←</a>
                 </div>
 
                 <?php if (empty($recentInvoices)): ?>
