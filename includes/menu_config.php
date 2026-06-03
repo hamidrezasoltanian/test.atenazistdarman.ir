@@ -129,6 +129,7 @@ return [
             ['title' => 'لیست محصولات',       'link' => 'admin/products_list.php',  'perm' => 'products_list'],
             ['title' => '📦 داشبورد انبار',    'link' => 'admin/inv_dashboard.php',  'perm' => 'inv_view'],
             ['title' => '🏭 مدیریت انبارها',   'link' => 'admin/inv_storerooms.php', 'perm' => 'inv_storerooms'],
+            ['title' => '🚀 انبار پیشرفته WMS', 'link' => 'admin/inv_wms.php',        'perm' => 'inv_view'],
             ['title' => '📥 رسید و حواله',     'link' => 'admin/inv_receipts.php',   'perm' => 'inv_receipts'],
             ['title' => '📋 کاردکس کالا',      'link' => 'admin/inv_kardex.php',     'perm' => 'inv_kardex'],
         ]
