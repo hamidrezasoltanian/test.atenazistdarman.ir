@@ -322,7 +322,7 @@ require_once __DIR__ . '/../../templates/sidebar.php';
 </div>
 
 <!-- مودال افزودن مرکز -->
-<div id="addModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9000;display:flex;align-items:center;justify-content:center">
+<div id="addModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9000;align-items:center;justify-content:center">
   <div style="background:#fff;border-radius:12px;padding:24px;width:420px;max-width:95vw">
     <h3 style="margin:0 0 16px;font-size:14px;color:#1e293b">افزودن مرکز به برنامه هفته</h3>
     <input type="text" id="customerSearch" placeholder="🔍 نام یا کد مرکز را تایپ کنید..." oninput="searchCustomers()"
@@ -356,7 +356,7 @@ require_once __DIR__ . '/../../templates/sidebar.php';
 </div>
 
 <!-- مودال تنظیم تاریخ -->
-<div id="schedModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9001;display:flex;align-items:center;justify-content:center">
+<div id="schedModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9001;align-items:center;justify-content:center">
   <div style="background:#fff;border-radius:12px;padding:24px;width:360px;max-width:95vw">
     <h3 style="margin:0 0 16px;font-size:14px;color:#1e293b">📅 تنظیم برنامه — <span id="schedName"></span></h3>
     <div style="margin-bottom:12px">
@@ -379,7 +379,7 @@ require_once __DIR__ . '/../../templates/sidebar.php';
 </div>
 
 <!-- مودال انجام شد -->
-<div id="doneModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9001;display:flex;align-items:center;justify-content:center">
+<div id="doneModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9001;align-items:center;justify-content:center">
   <div style="background:#fff;border-radius:12px;padding:24px;width:380px;max-width:95vw">
     <h3 style="margin:0 0 16px;font-size:14px;color:#1e293b">✅ ثبت نتیجه — <span id="doneName"></span></h3>
     <div id="doneTypeInfo" style="font-size:12px;color:#64748b;margin-bottom:12px"></div>
