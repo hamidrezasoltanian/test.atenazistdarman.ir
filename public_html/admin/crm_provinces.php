@@ -136,7 +136,7 @@ $provinces = $pdo->query("
     FROM crm_provinces cp
     LEFT JOIN crm_user_provinces cup ON cup.province_name = cp.province_name
     LEFT JOIN users u ON u.id = cup.user_id
-    ORDER BY cp.potential ASC, cp.biopsy_pct DESC
+    ORDER BY cp.potential ASC, cp.province_name ASC
 ")->fetchAll(PDO::FETCH_ASSOC);
 
 // خلاصه per کارشناس
