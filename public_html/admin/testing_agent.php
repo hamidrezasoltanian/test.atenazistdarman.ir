@@ -221,14 +221,20 @@ $phpFiles = [
     // مرحله ۴ — گزارش‌دهی
     'admin/fin_reports.php'              => 'گزارش‌های مالی',
     'admin/crm_reports.php'              => 'تحلیل CRM',
+    // مرحله ۵ — ERP یکپارچه و API
+    'admin/erp_dashboard.php'            => 'داشبورد ERP یکپارچه',
+    'api/v1/index.php'                   => 'REST API v1',
 ];
-$basedir = __DIR__ . '/../../public_html/';
+$pubDir = __DIR__ . '/..'; // public_html
 foreach ($phpFiles as $path => $label) {
-    $fullpath = __DIR__ . '/' . (strpos($path,'admin/')===0 ? basename($path) : $path);
-    // مسیر نسبی از پوشه admin
-    $fullpath2 = __DIR__ . '/../' . $path;
-    $exists = file_exists(__DIR__ . '/' . basename($path));
-    $results[] = runTest("فایل موجود: $label", function() use ($path, $exists, $label) {
+    // مسیر از public_html
+    $fullpath = $pubDir . '/' . $path;
+    // fallback: اگر admin/ بود فقط نام فایل
+    if (!file_exists($fullpath) && strpos($path, 'admin/') === 0) {
+        $fullpath = __DIR__ . '/' . basename($path);
+    }
+    $exists = file_exists($fullpath);
+    $results[] = runTest("فایل موجود: $label", function() use ($path, $exists) {
         return $exists ? ['pass'=>true,'detail'=>$path] : ['pass'=>false,'msg'=>"$path یافت نشد"];
     });
 }
@@ -260,6 +266,24 @@ $results[] = runTest('CRUD رسید انبار — ایجاد و حذف تستی
         $pdo->rollBack();
         return ['pass'=>false,'msg'=>$e->getMessage()];
     }
+});
+
+// ── تست مرحله ۵: جدول api_tokens ────────────────────────────
+$results[] = runTest('جدول API Tokens موجود یا قابل ساخت است', function() use ($pdo) {
+    try {
+        $pdo->exec("CREATE TABLE IF NOT EXISTS api_tokens (
+            id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            user_id INT UNSIGNED NOT NULL,
+            token VARCHAR(64) NOT NULL UNIQUE,
+            name VARCHAR(100) NULL,
+            last_used DATETIME NULL,
+            expires_at DATETIME NULL,
+            is_active TINYINT(1) NOT NULL DEFAULT 1,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        $r = $pdo->query("SHOW TABLES LIKE 'api_tokens'")->fetchColumn();
+        return $r ? ['pass'=>true,'detail'=>'جدول api_tokens موجود است'] : ['pass'=>false,'msg'=>'ساخت جدول ناموفق'];
+    } catch (Exception $e) { return ['pass'=>false,'msg'=>$e->getMessage()]; }
 });
 
 // ── تست CSRF توکن ─────────────────────────────────────────────
