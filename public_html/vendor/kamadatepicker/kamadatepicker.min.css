@@ -1,0 +1,172 @@
+/*! kamadatepicker - version 1.5.3 - Customized/Beautified */
+.bd-hide {
+    display: none;
+}
+
+.bd-main {
+    background-color: #fff;
+    border: 1px solid #e2e8f0; /* رنگ حاشیه ملایم */
+    padding: 8px;
+    z-index: 9999;
+    width: auto !important;
+    margin: 0;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); /* سایه مدرن */
+    border-radius: 8px; /* گوشه‌های گرد */
+    font-family: "Vazirmatn", Tahoma, sans-serif; /* فونت وزیر یا فونت سیستم */
+    direction: rtl;
+}
+
+.bd-calendar {
+    width: 240px; /* کمی عریض‌تر برای خوانایی بهتر */
+    padding: 0;
+    margin: 0;
+}
+
+.bd-calendar table {
+    border: none;
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 2px; /* فاصله بین سلول‌ها */
+}
+
+.bd-title {
+    width: 100%;
+    padding: 0 0 8px 0;
+    margin: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #f1f5f9;
+    margin-bottom: 5px;
+}
+
+.bd-dropdown {
+    display: inline-block;
+    width: 40%;
+}
+
+.bd-dropdown select {
+    width: 100%;
+    padding: 2px;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    background-color: #f8fafc;
+    cursor: pointer;
+}
+
+.bd-next,
+.bd-prev {
+    height: 28px;
+    width: 28px;
+    border: 1px solid #e2e8f0;
+    background-color: #fff;
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #1e293b; /* 👈 تیره‌تر شد */
+    font-weight: 600; /* 👈 ضخیم‌تر برای واضح‌تر شدن */
+    transition: all 0.2s;
+}
+
+.bd-next:hover,
+.bd-prev:hover {
+    background-color: #eff6ff;
+    color: #2563eb;
+    border-color: #bfdbfe;
+}
+
+.bd-table thead {
+    background-color: transparent;
+    color: #64748b;
+}
+
+.bd-table thead tr {
+    height: 30px;
+    cursor: default;
+}
+
+.bd-table thead tr th {
+    text-align: center;
+    font-weight: 600;
+    font-size: 0.8rem;
+}
+
+.bd-table tbody tr td {
+    border: none;
+    padding: 0;
+}
+
+.bd-empty-cell,
+.bd-table-days button {
+    width: 32px; /* دکمه‌های مربعی */
+    height: 32px;
+    line-height: 32px;
+    padding: 0;
+    border-radius: 6px; /* گرد کردن دکمه‌های روز */
+    font-size: 0.85rem;
+}
+
+.bd-table-days button {
+    background-color: #fff;
+    border: 1px solid transparent;
+    color: #334155;
+    transition: all 0.2s;
+}
+
+.bd-table-days button:hover:enabled {
+    color: #2563eb;
+    background-color: #eff6ff;
+    border-color: #bfdbfe;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.bd-table-days button:disabled {
+    background-color: #fff;
+    color: #cbd5e1;
+    cursor: not-allowed;
+}
+
+/* روز امروز */
+.bd-today {
+    background-color: #dbeafe !important; /* آبی خیلی روشن */
+    color: #1e40af !important; /* آبی تیره */
+    font-weight: bold;
+    border: 1px solid #93c5fd !important;
+}
+
+/* روز تعطیل */
+.bd-holiday {
+    color: #ef4444 !important; /* قرمز */
+    background-color: #fef2f2 !important; /* قرمز خیلی روشن */
+}
+
+/* روز انتخاب شده */
+.bd-selected-day {
+    background-color: #2563eb !important; /* آبی اصلی */
+    color: #fff !important;
+    font-weight: bold;
+    box-shadow: 0 2px 4px rgba(37, 99, 235, 0.3);
+}
+
+.bd-goto-today {
+    width: 100%;
+    height: 30px;
+    line-height: 30px;
+    color: #fff;
+    background-color: #2563eb; /* دکمه برو به امروز آبی */
+    margin-top: 5px;
+    cursor: pointer;
+    text-align: center;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    transition: background 0.2s;
+}
+
+.bd-goto-today:hover {
+    background-color: #1d4ed8;
+}
