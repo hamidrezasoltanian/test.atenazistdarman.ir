@@ -154,7 +154,7 @@ foreach ($provinces as $p) {
     }
     $expertSummary[$eid]['provinces']++;
     $expertSummary[$eid]['centers'] += (int)$p['center_count'];
-    $expertSummary[$eid]['biopsy'] += (float)$p['biopsy_pct'];
+    $expertSummary[$eid]['biopsy'] += (float)($p['biopsy_pct'] ?? 0);
 }
 
 $potLabels = [1=>'P1 — بالا', 2=>'P2 — متوسط', 3=>'P3 — پایین'];
@@ -225,7 +225,7 @@ require_once __DIR__ . '/../../templates/sidebar.php';
               <?= $potLabels[$p['potential']] ?? '' ?>
             </span>
           </td>
-          <td style="padding:12px;text-align:center;font-weight:700;color:#0ea5e9"><?= number_format($p['biopsy_pct'],2) ?>٪</td>
+          <td style="padding:12px;text-align:center;font-weight:700;color:#0ea5e9"><?= number_format($p['biopsy_pct'] ?? 0, 2) ?>٪</td>
           <td style="padding:12px;text-align:center">
             <a href="#" onclick="showKanban('<?= htmlspecialchars($p['province_name'],ENT_QUOTES) ?>',this);return false"
                style="font-weight:700;color:#1e293b;text-decoration:none;border-bottom:2px solid #0ea5e9">
