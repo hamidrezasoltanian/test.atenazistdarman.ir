@@ -44,6 +44,11 @@ try {
     ];
     $ins = $pdo->prepare("INSERT IGNORE INTO crm_provinces (province_name, potential, biopsy_pct) VALUES (?,?,?)");
     foreach ($provinces30 as $p) { $ins->execute($p); }
+
+    // اضافه کردن ستون‌های ممکن در صورت نبودن
+    $pdo->exec("ALTER TABLE crm_provinces ADD COLUMN IF NOT EXISTS biopsy_pct DECIMAL(5,2) DEFAULT 0.00");
+    $pdo->exec("ALTER TABLE crm_provinces ADD COLUMN IF NOT EXISTS notes TEXT DEFAULT NULL");
+    $pdo->exec("ALTER TABLE crm_provinces ADD COLUMN IF NOT EXISTS updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP");
 } catch (Throwable $e) {}
 
 // ─── AJAX handlers ────────────────────────────────────────────
@@ -86,7 +91,7 @@ if ($isAjax && $_SERVER['REQUEST_METHOD'] === 'POST') {
             SELECT c.id, c.company_name, c.company_code, c.type_name, c.manager_name, c.mobile,
                    (SELECT o.stage_id FROM crm_opportunities o WHERE o.customer_id = c.id AND o.status='active' ORDER BY o.id DESC LIMIT 1) as stage_id,
                    (SELECT s.name FROM crm_opportunities o JOIN crm_board_stages s ON o.stage_id = s.id WHERE o.customer_id = c.id AND o.status='active' ORDER BY o.id DESC LIMIT 1) as stage_name,
-                   (SELECT s.color FROM crm_opportunities o JOIN crm_board_stages s ON o.stage_id = s.id WHERE o.customer_id = c.id AND o.status='active' ORDER BY o.id DESC LIMIT 1) as stage_color,
+                   (SELECT s.color_class FROM crm_opportunities o JOIN crm_board_stages s ON o.stage_id = s.id WHERE o.customer_id = c.id AND o.status='active' ORDER BY o.id DESC LIMIT 1) as stage_color,
                    (SELECT COUNT(*) FROM crm_opportunity_calls cc JOIN crm_opportunities oo ON cc.opportunity_id = oo.id WHERE oo.customer_id = c.id) as call_count,
                    (SELECT MAX(cc.call_date) FROM crm_opportunity_calls cc JOIN crm_opportunities oo ON cc.opportunity_id = oo.id WHERE oo.customer_id = c.id) as last_call
             FROM customers c
@@ -99,9 +104,9 @@ if ($isAjax && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $centers = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         // دریافت مراحل کانبان موجود
-        $stages = $pdo->query("SELECT DISTINCT s.id, s.name, s.color, s.position FROM crm_board_stages s ORDER BY s.position ASC")->fetchAll(PDO::FETCH_ASSOC);
+        $stages = $pdo->query("SELECT DISTINCT s.id, s.name, s.color_class as color, s.position FROM crm_board_stages s ORDER BY s.position ASC")->fetchAll(PDO::FETCH_ASSOC);
         // افزودن گروه «بدون فرصت»
-        array_unshift($stages, ['id' => 0, 'name' => 'بدون فرصت', 'color' => '#94a3b8', 'position' => -1]);
+        array_unshift($stages, ['id' => 0, 'name' => 'بدون فرصت', 'color' => 'gray', 'position' => -1]);
 
         // گروه‌بندی مراکز بر اساس مرحله
         $grouped = [];
@@ -337,10 +342,11 @@ function showKanban(provName, btn) {
             document.getElementById('kanbanBody').innerHTML = '<div style="padding:40px;text-align:center;color:#94a3b8">هیچ مرکزی در این استان ثبت نشده</div>';
             return;
         }
+        var colorMap = {gray:'#94a3b8',blue:'#3b82f6',purple:'#8b5cf6',amber:'#f59e0b',green:'#22c55e',rose:'#f43f5e',cyan:'#06b6d4',orange:'#f97316',red:'#ef4444',indigo:'#6366f1'};
         var html = '<div style="display:flex;gap:12px;min-width:max-content">';
         d.data.forEach(function(group) {
             var s = group.stage;
-            var color = s.color || '#94a3b8';
+            var color = colorMap[s.color] || s.color || '#94a3b8';
             html += '<div style="min-width:220px;max-width:240px;flex-shrink:0">';
             html += '<div style="padding:8px 12px;background:'+color+'22;border-radius:8px 8px 0 0;border-top:3px solid '+color+';display:flex;align-items:center;justify-content:space-between">';
             html += '<span style="font-size:12px;font-weight:700;color:#1e293b">'+esc(s.name||'بدون مرحله')+'</span>';
