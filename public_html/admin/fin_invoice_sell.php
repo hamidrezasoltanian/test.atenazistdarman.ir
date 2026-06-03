@@ -891,18 +891,25 @@ require_once __DIR__ . '/../../templates/header.php';
                 <!-- نوع فاکتور -->
                 <div style="margin-bottom:20px">
                     <div class="inv-sec-title">نوع فاکتور</div>
-                    <div style="display:flex;gap:12px;flex-wrap:wrap">
+                    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
                         <label id="lblOfficial" style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 18px;border-radius:10px;border:2px solid #2563eb;background:#eff6ff;font-weight:700;color:#1d4ed8;transition:all .2s">
                             <input type="radio" name="invoiceTypeRadio" value="official" checked onchange="onInvTypeChange(this.value)" style="accent-color:#2563eb">
                             🧾 رسمی
-                            <small style="font-weight:400;color:#64748b;font-size:.75rem">(با مالیات ارزش افزوده)</small>
                         </label>
                         <label id="lblAdjustment" style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 18px;border-radius:10px;border:2px solid #e2e8f0;background:#f8fafc;color:#64748b;transition:all .2s">
                             <input type="radio" name="invoiceTypeRadio" value="adjustment" onchange="onInvTypeChange(this.value)" style="accent-color:#7c3aed">
                             📋 تنظیمی
-                            <small style="font-weight:400;font-size:.75rem">(بدون مالیات — داخلی)</small>
+                            <small style="font-weight:400;font-size:.75rem">(داخلی)</small>
                         </label>
                         <input type="hidden" id="invTypeHidden" value="official">
+                        <!-- گزینه حذف مالیات مستقل از نوع فاکتور -->
+                        <label id="lblNoTax" style="display:flex;align-items:center;gap:7px;cursor:pointer;padding:10px 16px;border-radius:10px;border:2px solid #e2e8f0;background:#f8fafc;color:#64748b;transition:all .2s;font-size:.88rem">
+                            <input type="checkbox" id="chkNoTax" onchange="onNoTaxChange(this.checked)" style="accent-color:#0891b2;width:16px;height:16px">
+                            <span>بدون مالیات</span>
+                        </label>
+                    </div>
+                    <div id="taxNote" style="margin-top:8px;font-size:.78rem;color:#64748b;display:none">
+                        ⚠️ مالیات از همه ردیف‌ها حذف شده — سند حسابداری بدون ردیف مالیات ثبت می‌شود
                     </div>
                 </div>
 
@@ -1153,10 +1160,15 @@ function editInv(id){
         document.getElementById('invShipping').value=numFa(inv.shipping||0);
         document.getElementById('formTitle').textContent='✏️ ویرایش فاکتور';
         document.getElementById('formNum').textContent='شماره: '+inv.invoice_number;
-        // بازیابی نوع فاکتور
+        // بازیابی نوع فاکتور و وضعیت مالیات
         var itype = inv.invoice_type || 'official';
         document.getElementById('invTypeHidden').value = itype;
         document.querySelectorAll('[name="invoiceTypeRadio"]').forEach(function(r) { r.checked = (r.value === itype); });
+        // اگر مالیات کل صفر است، تیک «بدون مالیات» را فعال کن
+        var allTaxZero = inv.items && inv.items.length && inv.items.every(function(it){ return !parseFloat(it.tax_pct); });
+        var chk = document.getElementById('chkNoTax');
+        chk.checked = (itype === 'adjustment') || allTaxZero;
+        chk.disabled = (itype === 'adjustment');
         onInvTypeChange(itype);
         (inv.items||[]).forEach(function(it){
             addRow(it.stuff_id,it.description,it.unit,it.qty,it.unit_price,it.discount_pct,it.tax_pct);
@@ -1192,6 +1204,13 @@ function resetForm(){
     document.getElementById('invItems').innerHTML='';
     document.getElementById('formTitle').textContent='🧾 فاکتور فروش جدید';
     document.getElementById('formNum').textContent='شماره: خودکار';
+    // بازنشانی نوع فاکتور و تیک مالیات
+    document.getElementById('invTypeHidden').value='official';
+    document.querySelectorAll('[name="invoiceTypeRadio"]').forEach(function(r){r.checked=(r.value==='official');});
+    onInvTypeChange('official');
+    document.getElementById('chkNoTax').checked=false;
+    document.getElementById('chkNoTax').disabled=false;
+    document.getElementById('taxNote').style.display='none';
     recalcAll();
     addRow();
 }
@@ -1205,7 +1224,8 @@ function today(){
 function addRow(stuffId,desc,unit,qty,price,discP,taxP){
     rowCnt++;
     var idx=rowCnt;
-    var d=desc||'', u=unit||'', q=qty||1, p=price||0, dp=discP!==undefined?discP:0, tp=taxP!==undefined?taxP:9, sid=stuffId||'';
+    var noTaxNow = document.getElementById('chkNoTax').checked || document.getElementById('invTypeHidden').value==='adjustment';
+    var d=desc||'', u=unit||'', q=qty||1, p=price||0, dp=discP!==undefined?discP:0, tp=(taxP!==undefined?taxP:(noTaxNow?0:9)), sid=stuffId||'';
     var row=document.createElement('div');
     row.className='inv-item-row'; row.id='row-'+idx;
     row.innerHTML=
@@ -1351,15 +1371,32 @@ function onInvTypeChange(val) {
     document.getElementById('lblAdjustment').style.cssText = isAdj
         ? 'display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 18px;border-radius:10px;border:2px solid #7c3aed;background:#f3e8ff;font-weight:700;color:#7c3aed;transition:all .2s'
         : 'display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 18px;border-radius:10px;border:2px solid #e2e8f0;background:#f8fafc;color:#64748b;transition:all .2s';
-    // در فاکتور تنظیمی ستون مالیات را صفر می‌کند
-    if (isAdj) {
-        document.querySelectorAll('[id^="tax-"]').forEach(function(el) { el.value = '0'; });
-        document.querySelectorAll('.tax-col').forEach(function(el) { el.style.opacity = '.4'; el.style.pointerEvents = 'none'; });
-    } else {
-        document.querySelectorAll('[id^="tax-"]').forEach(function(el) { el.value = '9'; });
-        document.querySelectorAll('.tax-col').forEach(function(el) { el.style.opacity = '1'; el.style.pointerEvents = ''; });
-    }
+    var noTax = isAdj || document.getElementById('chkNoTax').checked;
+    applyTaxState(noTax);
+    // تنظیمی → تیک «بدون مالیات» را هم فعال نشان بده
+    var chk = document.getElementById('chkNoTax');
+    if (isAdj) { chk.checked = true; chk.disabled = true; }
+    else        { chk.disabled = false; }
     recalcAll();
+}
+
+function onNoTaxChange(checked) {
+    var isAdj = (document.getElementById('invTypeHidden').value === 'adjustment');
+    applyTaxState(isAdj || checked);
+    document.getElementById('taxNote').style.display = (isAdj || checked) ? 'block' : 'none';
+    recalcAll();
+}
+
+function applyTaxState(noTax) {
+    document.querySelectorAll('[id^="tax-"]').forEach(function(el) {
+        if (noTax) { el.value = '0'; el.style.opacity = '.4'; el.style.pointerEvents = 'none'; }
+        else        { if (el.value === '0') el.value = '9'; el.style.opacity = '1'; el.style.pointerEvents = ''; }
+    });
+    document.querySelectorAll('.tax-col').forEach(function(el) {
+        el.style.opacity = noTax ? '.4' : '1';
+        el.style.pointerEvents = noTax ? 'none' : '';
+    });
+    document.getElementById('taxNote').style.display = noTax ? 'block' : 'none';
 }
 
 function doSave(mode){
