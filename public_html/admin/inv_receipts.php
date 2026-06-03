@@ -372,7 +372,7 @@ $rawCsrfToken = $_SESSION['csrf_token'];
 
 // عنوان صفحه
 $pageTitle = 'رسید و حواله انبار';
-$basePath  = '../..';
+$basePath  = '../../';
 $todayJalali = jdate('Y/m/d');
 
 include __DIR__ . '/../../templates/header.php';

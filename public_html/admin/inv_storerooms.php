@@ -248,7 +248,7 @@ $csrfToken = csrf_field(); // HTML hidden input — مقدار توکن را ج�
 $rawCsrfToken = $_SESSION['csrf_token'] ?? '';
 
 $pageTitle = 'مدیریت انبارها';
-$basePath  = '../..';
+$basePath  = '../../';
 include __DIR__ . '/../../templates/header.php';
 ?>
 <link rel="stylesheet" href="../../assets/css/fin_module.css">

@@ -162,7 +162,7 @@ $todayJalali = jdate('Y/m/d');
 
 // ─── آماده‌سازی متغیرهای صفحه ─────────────────────────────────
 $pageTitle = 'داشبورد انبارداری';
-$basePath = '../..';
+$basePath = '../../';
 
 include __DIR__ . '/../../templates/header.php';
 ?>
