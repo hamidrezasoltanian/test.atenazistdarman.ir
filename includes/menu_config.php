@@ -61,7 +61,7 @@ return [
             ['title' => 'تقویم فروش', 'link' => 'admin/crm_calendar.php', 'perm' => 'crm_calendar'],
             ['title' => 'افراد', 'link' => 'admin/crm_contacts.php', 'perm' => 'crm_contacts'],
             ['title' => 'چک‌لیست روزانه', 'link' => 'admin/crm_daily_checklist.php', 'perm' => 'crm_checklist'],
-            ['title' => 'شاخص‌های کلیدی (KPI)', 'link' => 'admin/crm_kpi.php', 'perm' => 'crm_kpi'],
+            ['title' => 'شاخص‌های کلیدی (KPI)', 'link' => 'admin/crm_reports.php', 'perm' => 'crm_kpi'],
             ['title' => 'مدیریت استان‌ها', 'link' => 'admin/crm_provinces.php', 'perm' => 'crm_view'],
             ['title' => '📋 برنامه هفتگی', 'link' => 'admin/crm_weekplan.php', 'perm' => 'crm_view'],
             ['title' => '💰 مطالبات', 'link' => 'admin/crm_receivables.php', 'perm' => 'crm_view'],

@@ -247,9 +247,8 @@ if ($hasInvoices) {
     // ۱۰ فاکتور اخیر
     $stmtRecent = $pdo->query("
         SELECT i.id, i.invoice_number, i.invoice_date, i.total_amount, i.paid_amount, i.status,
-               COALESCE(c.company_name, p.name, 'نامشخص') as person_name
+               COALESCE(p.name, i.customer_name, 'نامشخص') as person_name
         FROM fin_invoices i
-        LEFT JOIN customers c ON i.customer_id = c.id
         LEFT JOIN fin_persons p ON i.person_id = p.id
         WHERE i.type='sell' AND i.is_deleted=0 $fyWhere
         ORDER BY i.created_at DESC LIMIT 10
