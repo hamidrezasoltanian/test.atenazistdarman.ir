@@ -94,10 +94,10 @@ function nextBuyNumber($pdo) {
     try {
         $last = $pdo->query(
             "SELECT MAX(CAST(SUBSTRING_INDEX(invoice_number,'-',-1) AS UNSIGNED))
-             FROM fin_invoices WHERE invoice_number LIKE 'B-{$year}-%'"
+             FROM fin_invoices WHERE invoice_number LIKE 'BUY-{$year}-%'"
         )->fetchColumn();
     } catch (Throwable $e) { $last = 0; }
-    return 'B-' . $year . '-' . str_pad((int)$last + 1, 4, '0', STR_PAD_LEFT);
+    return 'BUY-' . $year . '-' . str_pad((int)$last + 1, 4, '0', STR_PAD_LEFT);
 }
 
 // ===========================================================
@@ -449,14 +449,13 @@ function saveBuyInvoice($pdo, $targetStatus, $userId, $fiscalYearId) {
                     $pdo->prepare(
                         "INSERT INTO inv_tickets (ticket_number,type,ticket_date,storeroom_id,person_id,ref_type,ref_id,status,created_by)
                          VALUES (?,?,?,?,?,?,?,?,?)"
-                    )->execute([$tNum,'receipt',date('Y-m-d'),$storoomId,$personId,'invoice_buy',$invoiceId,'confirmed',$userId]);
+                    )->execute([$tNum,'receipt',date('Y-m-d'),$storoomId,$personId,'invoice_buy',$invoiceId,'pending',$userId]);
                     $tid = (int)$pdo->lastInsertId();
                     foreach ($cleanItems as $it) {
                         if (!$it['stuff_id']) continue;
                         $pdo->prepare("INSERT INTO inv_ticket_items (ticket_id,stuff_id,qty,unit_price,total) VALUES (?,?,?,?,?)")
                             ->execute([$tid,$it['stuff_id'],$it['qty'],$it['unit_price'],$it['total']]);
-                        $pdo->prepare("UPDATE stuff_price_list SET total_inventory=total_inventory+? WHERE stuff_id=?")
-                            ->execute([$it['qty'],$it['stuff_id']]);
+                        // موجودی اینجا به‌روز نمی‌شود؛ پس از تأیید رسید توسط مدیر انبار انجام می‌شود
                     }
                 }
             }
@@ -1131,7 +1130,7 @@ function onStuffSearch(idx,q){
                 dd.innerHTML='<div class="ac-it nr">کالایی یافت نشد.</div>';
             } else {
                 dd.innerHTML=res.results.map(function(c){
-                    return '<div class="ac-it" onclick="selStuff('+idx+','+c.id+',\''+escJ(c.name)+'\\',\''+escJ(c.unit||'')+'\','+(parseInt(c.price)||0)+')">'
+                    return '<div class="ac-it" onclick="selStuff('+idx+','+c.id+',\''+escJ(c.name)+'\',\''+escJ(c.unit||'')+'\','+(parseInt(c.price)||0)+')">'
                         +esc(c.name)+(c.unit?' <small style="color:#94a3b8">('+c.unit+')</small>':'')
                         +' — <span style="color:#7c3aed;direction:ltr;display:inline-block">'+numFa(c.price)+' ریال</span>'
                         +'</div>';
