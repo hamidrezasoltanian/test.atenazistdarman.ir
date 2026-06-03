@@ -4,14 +4,12 @@
 function toggleSidebar() {
     const sidebar = document.getElementById('sidebar');
     const main = document.getElementById('mainContent');
-    
-    // در موبایل (عرض کمتر از 768)
+    if (!sidebar) return;
     if (window.innerWidth <= 768) {
         sidebar.classList.toggle('active');
     } else {
-        // در دسکتاپ
         sidebar.classList.toggle('collapsed');
-        main.classList.toggle('expanded');
+        if (main) main.classList.toggle('expanded');
     }
 }
 
