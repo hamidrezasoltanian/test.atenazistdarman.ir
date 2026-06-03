@@ -173,7 +173,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $quotes = $rawQuotes;
             } catch (Throwable $eQ) { $quotes = []; }
 
-            echo json_encode(['status' => 'success', 'opportunity' => $opp, 'logs' => $logs, 'comments' => $comments, 'calls' => $calls, 'missions' => $missions, 'tasks' => $tasks, 'notes' => $notes, 'activities' => $activities, 'quotes' => $quotes]);
+            // مانده مالی مشتری
+            $customerBalance = ['total'=>'0','paid'=>'0','remain'=>'0','invoices'=>[]];
+            try {
+                $cName = $opp['company_name'] ?? '';
+                if ($cName) {
+                    $stmtBal = $pdo->prepare(
+                        "SELECT COALESCE(SUM(i.total_amount),0) t, COALESCE(SUM(i.paid_amount),0) p
+                         FROM fin_invoices i
+                         LEFT JOIN fin_persons fp ON fp.id = i.person_id
+                         WHERE i.is_deleted=0 AND i.type='sell'
+                           AND (COALESCE(fp.company_name,fp.name,i.customer_name) = ? OR i.customer_name = ?)"
+                    );
+                    $stmtBal->execute([$cName, $cName]);
+                    $totRow = $stmtBal->fetch(PDO::FETCH_ASSOC);
+
+                    $stmtInvs = $pdo->prepare(
+                        "SELECT i.id, i.invoice_number, i.invoice_date, i.total_amount, i.paid_amount, i.status
+                         FROM fin_invoices i
+                         LEFT JOIN fin_persons fp ON fp.id = i.person_id
+                         WHERE i.is_deleted=0 AND i.type='sell'
+                           AND (COALESCE(fp.company_name,fp.name,i.customer_name) = ? OR i.customer_name = ?)
+                         ORDER BY i.id DESC LIMIT 5"
+                    );
+                    $stmtInvs->execute([$cName, $cName]);
+                    $invRows = $stmtInvs->fetchAll(PDO::FETCH_ASSOC);
+                    foreach ($invRows as &$ir) {
+                        $p2 = explode('-', $ir['invoice_date']);
+                        $ir['date_fa']    = count($p2)==3 ? crm_greg_to_jalali($p2[0],$p2[1],$p2[2],'/') : $ir['invoice_date'];
+                        $ir['total_fmt']  = number_format((int)$ir['total_amount']);
+                        $ir['remain_fmt'] = number_format(max(0,(int)$ir['total_amount']-(int)$ir['paid_amount']));
+                    }
+                    unset($ir);
+                    $customerBalance = [
+                        'total'    => number_format((int)$totRow['t']),
+                        'paid'     => number_format((int)$totRow['p']),
+                        'remain'   => number_format(max(0,(int)$totRow['t']-(int)$totRow['p'])),
+                        'invoices' => $invRows,
+                    ];
+                }
+            } catch (Throwable $eB) {}
+
+            echo json_encode(['status' => 'success', 'opportunity' => $opp, 'logs' => $logs, 'comments' => $comments, 'calls' => $calls, 'missions' => $missions, 'tasks' => $tasks, 'notes' => $notes, 'activities' => $activities, 'quotes' => $quotes, 'customer_balance' => $customerBalance]);
         } catch (Exception $e) { echo json_encode(['status' => 'error', 'message' => $e->getMessage()]); } exit;
     }
 
@@ -635,7 +676,10 @@ include __DIR__ . '/../../templates/sidebar.php';
                             <div class="c-title" style="font-weight: bold; color: #1e293b;"><?php echo htmlspecialchars($opp['title']); ?></div>
                             <div class="c-customer" style="color: <?php echo htmlspecialchars($colorValue); ?>;">🏢 <?php echo htmlspecialchars($opp['company_name']); ?></div>
                             <div class="c-expert"><img src="<?php echo htmlspecialchars($ePic); ?>"><span><?php echo htmlspecialchars(($opp['expert_fname'] ?? 'نامشخص') . ' ' . ($opp['expert_lname'] ?? '')); ?></span></div>
-                            <div style="margin-top:5px;text-align:left"><a href="fin_preinvoice.php?opportunity_id=<?php echo $opp['id']; ?>" onclick="event.stopPropagation()" style="font-size:10px;color:#92400e;background:#fffbeb;border:1px solid #fcd34d;padding:2px 7px;border-radius:8px;text-decoration:none">🧾 پیشفاکتور</a></div>
+                            <div style="margin-top:5px;display:flex;gap:4px;justify-content:flex-end;flex-wrap:wrap">
+                                <a href="fin_preinvoice.php?opportunity_id=<?php echo $opp['id']; ?>" onclick="event.stopPropagation()" style="font-size:10px;color:#92400e;background:#fffbeb;border:1px solid #fcd34d;padding:2px 7px;border-radius:8px;text-decoration:none">🧾 پیشفاکتور</a>
+                                <a href="fin_invoice_sell.php?opportunity_id=<?php echo $opp['id']; ?>" onclick="event.stopPropagation()" style="font-size:10px;color:#065f46;background:#dcfce7;border:1px solid #86efac;padding:2px 7px;border-radius:8px;text-decoration:none">🟢 فاکتور فروش</a>
+                            </div>
                         </div>
                     <?php endforeach; ?>
                 </div>
@@ -786,6 +830,7 @@ include __DIR__ . '/../../templates/sidebar.php';
                         <div class="nav-tab-item" onclick="window.switchMainTab('tasks')">📝 وظایف</div>
                         <div class="nav-tab-item" onclick="window.switchMainTab('notes')">📋 یادداشت‌ها</div>
                         <div class="nav-tab-item" onclick="window.switchMainTab('quotes')">🧾 پیشفاکتورها</div>
+                        <div class="nav-tab-item" onclick="window.switchMainTab('finance')">💰 مالی</div>
                         <div class="nav-tab-item" onclick="window.switchMainTab('history')">⏱️ تاریخچه</div>
                     </div>
                     <div id="tabContentContainer" style="flex:1; overflow-y:auto; padding-right:5px;"></div>
@@ -1446,12 +1491,13 @@ include __DIR__ . '/../../templates/sidebar.php';
                 });
                 document.getElementById('timelineBar').innerHTML = barHtml; 
                 
-                window.currentOppCalls = res.calls || []; 
+                window.currentOppCalls = res.calls || [];
                 window.currentOppActivities = res.activities || [];
                 window.currentOppQuotes = res.quotes || [];
                 window.currentOppMissions = res.missions || [];
                 window.currentOppTasks = res.tasks || [];
                 window.currentOppNotes = res.notes || [];
+                window.currentCustomerBalance = res.customer_balance || null;
                 
                 window.renderComments(res.comments);
                 
@@ -1627,6 +1673,41 @@ include __DIR__ . '/../../templates/sidebar.php';
                         +'</div></div>';
                 });
                 container.innerHTML = qHtml + '</div>';
+            }
+        } else if (tabName === 'finance') {
+            var bal = window.currentCustomerBalance;
+            if (!bal) {
+                container.innerHTML = '<div style="text-align:center;padding:50px;color:#94a3b8">اطلاعات مالی موجود نیست</div>';
+            } else {
+                var remainColor = parseInt((bal.remain||'0').replace(/,/g,'')) > 0 ? '#e11d48' : '#059669';
+                var fHtml = '<div style="direction:rtl">'
+                    + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:18px">'
+                    + '<div style="background:#eff6ff;border-radius:12px;padding:14px;text-align:center"><div style="font-size:.72rem;color:#64748b;margin-bottom:4px">جمع فاکتورها</div><div style="font-weight:900;color:#1d4ed8;font-size:.95rem">'+bal.total+' ریال</div></div>'
+                    + '<div style="background:#dcfce7;border-radius:12px;padding:14px;text-align:center"><div style="font-size:.72rem;color:#64748b;margin-bottom:4px">پرداخت شده</div><div style="font-weight:900;color:#059669;font-size:.95rem">'+bal.paid+' ریال</div></div>'
+                    + '<div style="background:'+(parseInt((bal.remain||'0').replace(/,/g,''))>0?'#fee2e2':'#f1f5f9')+';border-radius:12px;padding:14px;text-align:center"><div style="font-size:.72rem;color:#64748b;margin-bottom:4px">مانده بدهی</div><div style="font-weight:900;color:'+remainColor+';font-size:.95rem">'+bal.remain+' ریال</div></div>'
+                    + '</div>'
+                    + '<div style="display:flex;gap:8px;margin-bottom:14px">'
+                    + '<a href="fin_invoice_sell.php?opportunity_id='+window.activeOppId+'" target="_blank" style="padding:6px 14px;background:#2563eb;color:#fff;border-radius:8px;text-decoration:none;font-size:12px;font-weight:700">➕ صدور فاکتور فروش</a>'
+                    + '<a href="fin_receive_pay.php" target="_blank" style="padding:6px 14px;background:#059669;color:#fff;border-radius:8px;text-decoration:none;font-size:12px;font-weight:700">💳 ثبت دریافت</a>'
+                    + '</div>';
+                if (bal.invoices && bal.invoices.length > 0) {
+                    var sMap = {draft:'پیش‌نویس',confirmed:'تأیید شده',paid:'پرداخت کامل',partial:'پرداخت ناقص',cancelled:'لغو شده'};
+                    var sCls = {draft:'#64748b',confirmed:'#1d4ed8',paid:'#059669',partial:'#d97706',cancelled:'#b91c1c'};
+                    fHtml += '<div style="font-size:.78rem;font-weight:800;color:#64748b;margin-bottom:8px">آخرین فاکتورها</div>';
+                    bal.invoices.forEach(function(inv) {
+                        var st = sMap[inv.status]||inv.status, sc = sCls[inv.status]||'#64748b';
+                        fHtml += '<div style="padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center">'
+                            + '<div><span style="font-weight:700;color:#1e293b;font-size:.82rem">'+window.escapeHtml(inv.invoice_number)+'</span>'
+                            + ' <span style="font-size:.72rem;color:#64748b">'+inv.date_fa+'</span></div>'
+                            + '<div style="text-align:left"><span style="font-size:.78rem;color:'+sc+';font-weight:700">'+st+'</span>'
+                            + '<br><span style="font-size:.75rem;color:#e11d48">مانده: '+inv.remain_fmt+' ریال</span></div>'
+                            + '</div>';
+                    });
+                } else {
+                    fHtml += '<div style="text-align:center;padding:20px;color:#94a3b8;font-size:.85rem">هیچ فاکتوری ثبت نشده است</div>';
+                }
+                fHtml += '</div>';
+                container.innerHTML = fHtml;
             }
         } else if (tabName === 'history') {
             if(!window.currentOppActivities || window.currentOppActivities.length === 0) {

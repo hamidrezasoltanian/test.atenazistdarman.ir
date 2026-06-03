@@ -75,6 +75,52 @@ function renderTabPagination($total, $limit, $currentPage, $tabName, $paramName,
 // --- پردازش AJAX ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     header('Content-Type: application/json');
+    if ($_POST['action'] === 'get_fin_data') {
+        $cid  = (int)($_POST['customer_id'] ?? 0);
+        $name = trim($_POST['company_name'] ?? '');
+        if (!$name && $cid) {
+            $r = $pdo->prepare("SELECT company_name FROM customers WHERE id=? LIMIT 1");
+            $r->execute([$cid]);
+            $name = $r->fetchColumn() ?: '';
+        }
+        try {
+            $stmtT = $pdo->prepare(
+                "SELECT COALESCE(SUM(i.total_amount),0) t, COALESCE(SUM(i.paid_amount),0) p
+                 FROM fin_invoices i LEFT JOIN fin_persons fp ON fp.id=i.person_id
+                 WHERE i.is_deleted=0 AND i.type='sell'
+                   AND (COALESCE(fp.company_name,fp.name,i.customer_name) = ? OR i.customer_name = ?)"
+            );
+            $stmtT->execute([$name,$name]);
+            $tot = $stmtT->fetch(PDO::FETCH_ASSOC);
+
+            $stmtI = $pdo->prepare(
+                "SELECT i.id, i.invoice_number, i.invoice_date, i.total_amount, i.paid_amount, i.status
+                 FROM fin_invoices i LEFT JOIN fin_persons fp ON fp.id=i.person_id
+                 WHERE i.is_deleted=0 AND i.type='sell'
+                   AND (COALESCE(fp.company_name,fp.name,i.customer_name) = ? OR i.customer_name = ?)
+                 ORDER BY i.id DESC LIMIT 10"
+            );
+            $stmtI->execute([$name,$name]);
+            $invs = $stmtI->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($invs as &$inv) {
+                $inv['date_fa']    = function_exists('jdate') ? jdate('Y/m/d',$inv['invoice_date']) : $inv['invoice_date'];
+                $inv['total_fmt']  = number_format((int)$inv['total_amount']);
+                $inv['paid_fmt']   = number_format((int)$inv['paid_amount']);
+                $inv['remain_fmt'] = number_format(max(0,(int)$inv['total_amount']-(int)$inv['paid_amount']));
+            }
+            unset($inv);
+            echo json_encode([
+                'status'   => 'success',
+                'total'    => number_format((int)$tot['t']),
+                'paid'     => number_format((int)$tot['p']),
+                'remain'   => number_format(max(0,(int)$tot['t']-(int)$tot['p'])),
+                'invoices' => $invs,
+            ]);
+        } catch (Throwable $e) {
+            echo json_encode(['status'=>'error','message'=>$e->getMessage()]);
+        }
+        exit;
+    }
     if ($_POST['action'] === 'get_call_related_types') {
         try {
             $types = $pdo->query("SELECT id, title FROM crm_call_related_types WHERE is_active = 1")->fetchAll(PDO::FETCH_ASSOC);
@@ -190,6 +236,27 @@ if ($customerId > 0) {
             $stmtL = $pdo->prepare("SELECT DISTINCT l.id, l.subject, l.indicator_number, l.type, l.status, l.registered_at, l.created_at FROM letters l LEFT JOIN letter_receivers lr ON l.id = lr.letter_id WHERE (lr.receiver_type = 'external' AND lr.receiver_id = ?) OR (l.type = 'incoming' AND l.sender_id = ?) ORDER BY l.created_at DESC LIMIT ? OFFSET ?");
             $stmtL->execute([$customerId, $customerId, $limit, $lettersOffset]); $customerLetters = $stmtL->fetchAll(PDO::FETCH_ASSOC);
         } catch (Exception $e) {}
+
+        // مانده مالی برای نمایش در sidebar
+        $finBalance = ['total'=>0,'paid'=>0,'remain'=>0];
+        try {
+            $cName = $customer['company_name'] ?? '';
+            if ($cName) {
+                $stmtFin = $pdo->prepare(
+                    "SELECT COALESCE(SUM(i.total_amount),0) t, COALESCE(SUM(i.paid_amount),0) p
+                     FROM fin_invoices i LEFT JOIN fin_persons fp ON fp.id=i.person_id
+                     WHERE i.is_deleted=0 AND i.type='sell'
+                       AND (COALESCE(fp.company_name,fp.name,i.customer_name)=? OR i.customer_name=?)"
+                );
+                $stmtFin->execute([$cName,$cName]);
+                $fr = $stmtFin->fetch(PDO::FETCH_ASSOC);
+                $finBalance = [
+                    'total'  => (int)$fr['t'],
+                    'paid'   => (int)$fr['p'],
+                    'remain' => max(0,(int)$fr['t']-(int)$fr['p']),
+                ];
+            }
+        } catch (Throwable $eFin) {}
     }
 }
 
@@ -351,6 +418,26 @@ include __DIR__ . '/../../templates/sidebar.php';
                             <div class="data-row"><span class="data-label">کد پستی:</span><span class="data-val" dir="ltr"><?php echo htmlspecialchars($customer['zip_code'] ?? '-'); ?></span></div>
                             <div class="data-row" style="flex-direction: column; gap:5px;"><span class="data-label">آدرس:</span><span class="data-val small" style="line-height: 1.6;"><?php echo htmlspecialchars($customer['address'] ?? ''); ?></span></div>
                         </div>
+                        <?php if ($finBalance['total'] > 0): ?>
+                        <div style="margin:14px 0 0;padding:14px;background:<?php echo $finBalance['remain']>0?'#fff1f2':'#f0fdf4'; ?>;border-radius:12px;border:1px solid <?php echo $finBalance['remain']>0?'#fecdd3':'#bbf7d0'; ?>">
+                            <div style="font-size:.72rem;font-weight:800;color:#64748b;margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px">وضعیت مالی</div>
+                            <div style="display:flex;justify-content:space-between;margin-bottom:6px;font-size:.8rem">
+                                <span style="color:#64748b">جمع فاکتورها:</span>
+                                <span style="font-weight:700;direction:ltr"><?= number_format($finBalance['total']) ?> ریال</span>
+                            </div>
+                            <div style="display:flex;justify-content:space-between;margin-bottom:6px;font-size:.8rem">
+                                <span style="color:#64748b">پرداخت شده:</span>
+                                <span style="font-weight:700;color:#059669;direction:ltr"><?= number_format($finBalance['paid']) ?> ریال</span>
+                            </div>
+                            <div style="display:flex;justify-content:space-between;font-size:.85rem;padding-top:8px;border-top:1px dashed <?php echo $finBalance['remain']>0?'#fecdd3':'#bbf7d0'; ?>">
+                                <span style="font-weight:800">مانده بدهی:</span>
+                                <span style="font-weight:900;color:<?= $finBalance['remain']>0?'#e11d48':'#059669' ?>;direction:ltr"><?= number_format($finBalance['remain']) ?> ریال</span>
+                            </div>
+                        </div>
+                        <?php endif; ?>
+                        <div style="margin-top:12px">
+                            <a href="fin_invoice_sell.php" target="_blank" style="display:block;text-align:center;padding:8px;background:#2563eb;color:#fff;border-radius:8px;text-decoration:none;font-size:.82rem;font-weight:700">➕ صدور فاکتور فروش</a>
+                        </div>
                     </div>
                 </div>
 
@@ -361,6 +448,7 @@ include __DIR__ . '/../../templates/sidebar.php';
                         <button class="tab-btn <?php echo $activeTab === 'missions' ? 'active' : ''; ?>" onclick="switchTab('missions')">🗺️ مأموریت‌ها</button>
                         <button class="tab-btn <?php echo $activeTab === 'tasks' ? 'active' : ''; ?>" onclick="switchTab('tasks')">📝 وظایف</button>
                         <button class="tab-btn <?php echo $activeTab === 'letters' ? 'active' : ''; ?>" onclick="switchTab('letters')">✉️ مکاتبات اداری</button>
+                        <button class="tab-btn <?php echo $activeTab === 'finance' ? 'active' : ''; ?>" onclick="switchTab('finance')" id="tab-btn-finance">💰 مالی</button>
                     </div>
 
                     <!-- تب تماس‌ها -->
@@ -531,6 +619,16 @@ include __DIR__ . '/../../templates/sidebar.php';
                         </div>
                     </div>
 
+                    <!-- تب مالی -->
+                    <div id="tab-finance" class="tab-content <?php echo $activeTab === 'finance' ? 'active' : ''; ?>">
+                        <div class="missions-container" style="display:block;padding:20px;background:#fff;border:1px solid var(--border);border-radius:16px">
+                            <div id="fin-tab-content" style="text-align:center;padding:40px;color:#94a3b8">
+                                <div style="font-size:2rem;margin-bottom:10px">💰</div>
+                                <div>در حال بارگذاری اطلاعات مالی...</div>
+                            </div>
+                        </div>
+                    </div>
+
                 </div>
             </div>
         <?php endif; ?>
@@ -591,11 +689,66 @@ include __DIR__ . '/../../templates/sidebar.php';
 </main>
 
 <script>
+    var finTabLoaded = false;
+
     function switchTab(tabName) {
         document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
         document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
         document.getElementById('tab-' + tabName).classList.add('active');
         event.currentTarget.classList.add('active');
+        if (tabName === 'finance' && !finTabLoaded) { loadFinTab(); finTabLoaded = true; }
+    }
+
+    function loadFinTab() {
+        var fd = new FormData();
+        fd.append('action', 'get_fin_data');
+        fd.append('customer_id', customerId);
+        fd.append('company_name', activeCustomerName);
+        fetch(window.location.href.split('?')[0], {
+            method: 'POST',
+            headers: {'X-Requested-With': 'XMLHttpRequest'},
+            body: fd
+        }).then(r => r.json()).then(function(res) {
+            var box = document.getElementById('fin-tab-content');
+            if (!box) return;
+            if (res.status !== 'success') { box.innerHTML = '<div style="color:#e11d48;text-align:center;padding:30px">خطا در بارگذاری</div>'; return; }
+            var remainColor = parseInt((res.remain||'0').replace(/,/g,'')) > 0 ? '#e11d48' : '#059669';
+            var sMap = {draft:'پیش‌نویس',confirmed:'تأیید شده',paid:'پرداخت کامل',partial:'پرداخت ناقص',cancelled:'لغو شده'};
+            var sCls = {draft:'#64748b',confirmed:'#1d4ed8',paid:'#059669',partial:'#d97706',cancelled:'#b91c1c'};
+            var h = '<div style="direction:rtl">'
+                + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:20px">'
+                + '<div style="background:#eff6ff;border-radius:12px;padding:16px;text-align:center"><div style="font-size:.75rem;color:#64748b;margin-bottom:6px">جمع کل فاکتورها</div><div style="font-weight:900;color:#1d4ed8;font-size:1rem">'+res.total+' ریال</div></div>'
+                + '<div style="background:#dcfce7;border-radius:12px;padding:16px;text-align:center"><div style="font-size:.75rem;color:#64748b;margin-bottom:6px">پرداخت شده</div><div style="font-weight:900;color:#059669;font-size:1rem">'+res.paid+' ریال</div></div>'
+                + '<div style="background:'+(parseInt((res.remain||'0').replace(/,/g,''))>0?'#fee2e2':'#f1f5f9')+';border-radius:12px;padding:16px;text-align:center"><div style="font-size:.75rem;color:#64748b;margin-bottom:6px">مانده بدهی</div><div style="font-weight:900;color:'+remainColor+';font-size:1rem">'+res.remain+' ریال</div></div>'
+                + '</div>'
+                + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px">'
+                + '<a href="fin_invoice_sell.php" target="_blank" style="padding:7px 16px;background:#2563eb;color:#fff;border-radius:8px;text-decoration:none;font-size:13px;font-weight:700">➕ صدور فاکتور فروش</a>'
+                + '<a href="fin_receive_pay.php" target="_blank" style="padding:7px 16px;background:#059669;color:#fff;border-radius:8px;text-decoration:none;font-size:13px;font-weight:700">💳 ثبت دریافت</a>'
+                + '</div>';
+            if (res.invoices && res.invoices.length > 0) {
+                h += '<div style="font-size:.8rem;font-weight:800;color:#64748b;margin-bottom:10px">فاکتورهای اخیر</div>'
+                   + '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.82rem;direction:rtl">'
+                   + '<thead><tr style="background:#f8fafc"><th style="padding:8px 10px;text-align:right;border-bottom:2px solid #e2e8f0">شماره</th><th style="padding:8px 10px;text-align:right;border-bottom:2px solid #e2e8f0">تاریخ</th><th style="padding:8px 10px;text-align:left;border-bottom:2px solid #e2e8f0">مبلغ کل</th><th style="padding:8px 10px;text-align:left;border-bottom:2px solid #e2e8f0">مانده</th><th style="padding:8px 10px;text-align:center;border-bottom:2px solid #e2e8f0">وضعیت</th><th style="padding:8px 10px;border-bottom:2px solid #e2e8f0"></th></tr></thead><tbody>';
+                res.invoices.forEach(function(inv) {
+                    var st = sMap[inv.status]||inv.status, sc = sCls[inv.status]||'#64748b';
+                    h += '<tr style="border-bottom:1px solid #f1f5f9">'
+                        + '<td style="padding:8px 10px;font-weight:700;color:#1e293b">'+inv.invoice_number+'</td>'
+                        + '<td style="padding:8px 10px;color:#64748b;direction:ltr">'+inv.date_fa+'</td>'
+                        + '<td style="padding:8px 10px;direction:ltr;text-align:left">'+inv.total_fmt+'</td>'
+                        + '<td style="padding:8px 10px;direction:ltr;text-align:left;color:#e11d48;font-weight:700">'+inv.remain_fmt+'</td>'
+                        + '<td style="padding:8px 10px;text-align:center"><span style="color:'+sc+';font-size:.75rem;font-weight:700">'+st+'</span></td>'
+                        + '<td style="padding:8px 10px"><a href="fin_invoice_pdf.php?id='+inv.id+'&type=sell" target="_blank" style="font-size:.7rem;color:#2563eb">🖨️</a></td>'
+                        + '</tr>';
+                });
+                h += '</tbody></table></div>';
+            } else {
+                h += '<div style="text-align:center;padding:30px;color:#94a3b8;border:2px dashed #e2e8f0;border-radius:12px">هیچ فاکتوری برای این مشتری ثبت نشده است</div>';
+            }
+            h += '</div>';
+            box.innerHTML = h;
+        }).catch(function() {
+            document.getElementById('fin-tab-content').innerHTML = '<div style="color:#e11d48;text-align:center;padding:30px">خطا در ارتباط با سرور</div>';
+        });
     }
 
     const customerId = <?php echo (int)$customerId; ?>;
