@@ -69,9 +69,14 @@ if ($isAjax && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $actionType = in_array($_POST['action_type']??'',['call','visit']) ? $_POST['action_type'] : 'call';
         $targetUser = $isAdmin ? (int)($_POST['target_user_id'] ?? $userId) : $userId;
         if (!$customerId || !$weekStart) { echo json_encode(['ok'=>false,'msg'=>'اطلاعات ناقص']); exit; }
-        $dup = $pdo->prepare("SELECT id FROM crm_weekplan WHERE week_start=? AND user_id=? AND customer_id=?");
-        $dup->execute([$weekStart,$targetUser,$customerId]);
-        if ($dup->fetchColumn()) { echo json_encode(['ok'=>false,'msg'=>'این مرکز قبلاً در برنامه این هفته افزوده شده']); exit; }
+        // بررسی: مرکز نباید در هیچ هفته فعال (انجام نشده) دیگری باشد
+        $dup = $pdo->prepare("SELECT week_start FROM crm_weekplan WHERE user_id=? AND customer_id=? AND done=0 LIMIT 1");
+        $dup->execute([$targetUser,$customerId]);
+        $existingWeek = $dup->fetchColumn();
+        if ($existingWeek) {
+            echo json_encode(['ok'=>false,'msg'=>'این مرکز در هفته «'.$existingWeek.'» برنامه‌ریزی نشده دارد. ابتدا آن را انجام داده یا منتقل کنید.']);
+            exit;
+        }
         $pdo->prepare("INSERT INTO crm_weekplan (week_start,user_id,customer_id,action_type) VALUES (?,?,?,?)")
             ->execute([$weekStart,$targetUser,$customerId,$actionType]);
         echo json_encode(['ok'=>true,'id'=>$pdo->lastInsertId()]); exit;
@@ -341,14 +346,14 @@ require_once __DIR__ . '/../../templates/sidebar.php';
         $isToday = ($dayGStr === $today->format('Y-m-d'));
     ?>
     <div class="wp-day <?= $isToday?'today':'' ?>" id="wpDay_<?= $i ?>">
-      <div class="wp-day-head">
+      <div class="wp-day-head" id="wpDayHead_<?= $i ?>">
         <?= $dayName ?><br>
-        <small><?= sprintf('%02d/%02d',$dayJ[1],$dayJ[2]) ?></small>
+        <small id="wpDayDate_<?= $i ?>"><?= sprintf('%02d/%02d',$dayJ[1],$dayJ[2]) ?></small>
       </div>
       <div class="wp-day-body" id="wpDayBody_<?= $i ?>">
         <div class="wp-empty-day" style="text-align:center;padding:20px 5px;color:#cbd5e1;font-size:11px">—</div>
       </div>
-      <div class="wp-day-add" onclick="quickAdd('<?= $dayGStr ?>')">&#43; برنامه‌ریزی</div>
+      <div class="wp-day-add" id="wpDayAdd_<?= $i ?>" onclick="quickAdd(this.dataset.gdate)" data-gdate="<?= $dayGStr ?>">&#43; برنامه‌ریزی</div>
     </div>
     <?php endforeach; ?>
   </div>
@@ -505,12 +510,24 @@ function getWeekDayGDates(weekStart){
 // ── رندر هفته ──
 function renderWeek(items, weekStart){
   var dayDates = getWeekDayGDates(weekStart);
+  var todayISO = (function(){var d=new Date();return d.getFullYear()+'-'+(d.getMonth()<9?'0':'')+(d.getMonth()+1)+'-'+(d.getDate()<10?'0':'')+d.getDate();})();
   var buckets = {};
   dayDates.forEach(function(d){buckets[d]=[];});
   var unsched=[], myId=<?= $currUserId ?>;
   items.forEach(function(it){
     if(it.scheduled_date && buckets[it.scheduled_date]!==undefined) buckets[it.scheduled_date].push(it);
     else unsched.push(it);
+  });
+  // آپدیت هدر هر روز (تاریخ شمسی + today class + دکمه افزودن)
+  dayDates.forEach(function(gDate,i){
+    var parts=gDate.split('-');
+    var jArr=g2j(parseInt(parts[0]),parseInt(parts[1]),parseInt(parts[2]));
+    var dateEl=document.getElementById('wpDayDate_'+i);
+    if(dateEl) dateEl.textContent=(jArr[1]<10?'0':'')+jArr[1]+'/'+(jArr[2]<10?'0':'')+jArr[2];
+    var dayEl=document.getElementById('wpDay_'+i);
+    if(dayEl){if(gDate===todayISO)dayEl.classList.add('today');else dayEl.classList.remove('today');}
+    var addBtn=document.getElementById('wpDayAdd_'+i);
+    if(addBtn) addBtn.dataset.gdate=gDate;
   });
   // رندر روزها
   dayDates.forEach(function(gDate,i){
