@@ -102,9 +102,8 @@ if ($isAjax && $_SERVER['REQUEST_METHOD'] === 'POST') {
             $where[] = 'p.type = ?';
             $params[] = $type;
         }
-        $sql = "SELECT p.*, c.first_name AS c_first, c.last_name AS c_last
+        $sql = "SELECT p.*
                 FROM fin_persons p
-                LEFT JOIN customers c ON c.id = p.customer_id
                 WHERE " . implode(' AND ', $where) . "
                 ORDER BY p.id DESC LIMIT 200";
         $stmt = $pdo->prepare($sql);
@@ -118,6 +117,7 @@ if ($isAjax && $_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'save') {
         $id           = (int)($_POST['id'] ?? 0);
         $name         = trim($_POST['name']          ?? '');
+        $nikename     = trim($_POST['nikename']      ?? '');
         $company      = trim($_POST['company_name']  ?? '');
         $type         = trim($_POST['type']          ?? 'customer');
         $code         = trim($_POST['code']          ?? '');
@@ -132,6 +132,8 @@ if ($isAjax && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $opening      = (int)preg_replace('/[^0-9\-]/','',$_POST['opening_balance'] ?? '0');
         $customer_id  = (int)($_POST['customer_id']  ?? 0) ?: null;
         $notes        = trim($_POST['notes']         ?? '');
+        // نام تجاری خودکار اگر خالی بود
+        if (!$nikename) $nikename = $company ?: $name;
 
         if (!$name) { echo json_encode(['ok' => false, 'msg' => 'نام طرف حساب الزامی است']); exit; }
         if (!in_array($type, ['customer','supplier','both'])) {
@@ -145,34 +147,32 @@ if ($isAjax && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($id > 0) {
             /* ویرایش */
-            $stmt = $pdo->prepare("UPDATE fin_persons SET
-                name=?, company_name=?, type=?, code=?, national_id=?, economic_code=?,
+            $pdo->prepare("UPDATE fin_persons SET
+                name=?, nikename=?, company_name=?, type=?, code=?,
+                national_id=?, economic_code=?, shenasemeli=?, codeeghtesadi=?,
                 tel=?, mobile=?, email=?, address=?, state=?, city=?,
-                opening_balance=?, customer_id=?, notes=?
-                WHERE id=? AND is_deleted=0");
-            $stmt->execute([
-                $name, $company ?: null, $type, $code, $national_id ?: null, $economic ?: null,
+                opening_balance=?, notes=?
+                WHERE id=? AND is_deleted=0")->execute([
+                $name, $nikename ?: null, $company ?: null, $type, $code,
+                $national_id ?: null, $economic ?: null, $national_id ?: null, $economic ?: null,
                 $tel ?: null, $mobile ?: null, $email ?: null, $address ?: null,
-                $state ?: null, $city ?: null, $opening, $customer_id, $notes ?: null, $id
+                $state ?: null, $city ?: null, $opening, $notes ?: null, $id
             ]);
             echo json_encode(['ok' => true, 'msg' => 'طرف حساب با موفقیت ویرایش شد', 'code' => $code]);
         } else {
             /* افزودن */
-            /* بررسی تکراری نبودن کد */
             $check = $pdo->prepare("SELECT id FROM fin_persons WHERE code=? AND is_deleted=0");
             $check->execute([$code]);
-            if ($check->fetch()) {
-                $code = generatePersonCode($pdo);
-            }
-            $stmt = $pdo->prepare("INSERT INTO fin_persons
-                (name, company_name, type, code, national_id, economic_code,
-                 tel, mobile, email, address, state, city,
-                 opening_balance, customer_id, notes)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
-            $stmt->execute([
-                $name, $company ?: null, $type, $code, $national_id ?: null, $economic ?: null,
+            if ($check->fetch()) { $code = generatePersonCode($pdo); }
+            $pdo->prepare("INSERT INTO fin_persons
+                (name, nikename, company_name, type, code,
+                 national_id, economic_code, shenasemeli, codeeghtesadi,
+                 tel, mobile, email, address, state, city, opening_balance, notes)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")->execute([
+                $name, $nikename ?: null, $company ?: null, $type, $code,
+                $national_id ?: null, $economic ?: null, $national_id ?: null, $economic ?: null,
                 $tel ?: null, $mobile ?: null, $email ?: null, $address ?: null,
-                $state ?: null, $city ?: null, $opening, $customer_id, $notes ?: null
+                $state ?: null, $city ?: null, $opening, $notes ?: null
             ]);
             echo json_encode(['ok' => true, 'msg' => 'طرف حساب با موفقیت افزوده شد', 'code' => $code]);
         }
@@ -379,12 +379,20 @@ require_once __DIR__ . '/../../templates/sidebar.php';
         اطلاعات پایه
       </div>
 
-      <div class="fin-form-group">
-        <label style="font-size:.82rem;font-weight:700;color:#475569;display:block;margin-bottom:6px">
-          نام کامل <span style="color:#e11d48">*</span>
-        </label>
-        <input type="text" id="fName" name="name" class="fin-input" placeholder="نام و نام خانوادگی یا نام شرکت" required>
+      <div class="fin-form-row">
+        <div class="fin-form-group" style="margin-bottom:0">
+          <label style="font-size:.82rem;font-weight:700;color:#475569;display:block;margin-bottom:6px">
+            نام کامل <span style="color:#e11d48">*</span>
+          </label>
+          <input type="text" id="fName" name="name" class="fin-input" placeholder="نام و نام خانوادگی یا نام شرکت" required>
+        </div>
+        <div class="fin-form-group" style="margin-bottom:0">
+          <label style="font-size:.82rem;font-weight:700;color:#475569;display:block;margin-bottom:6px">نام تجاری / مستعار</label>
+          <input type="text" id="fNikename" name="nikename" class="fin-input" placeholder="نام اختصاری (مثل hesabix)">
+        </div>
       </div>
+
+      <div style="margin-bottom:12px"></div>
 
       <div class="fin-form-row">
         <div class="fin-form-group" style="margin-bottom:0">
@@ -652,11 +660,12 @@ function editPerson(id) {
         document.getElementById('drawerTitle').textContent = 'ویرایش طرف حساب';
         setVal('fId', d.id);
         setVal('fName', d.name);
+        setVal('fNikename', d.nikename);
         setVal('fCompany', d.company_name);
         setVal('fType', d.type);
         setVal('fCode', d.code);
-        setVal('fNationalId', d.national_id);
-        setVal('fEconomic', d.economic_code);
+        setVal('fNationalId', d.shenasemeli || d.national_id);
+        setVal('fEconomic', d.codeeghtesadi || d.economic_code);
         setVal('fTel', d.tel);
         setVal('fMobile', d.mobile);
         setVal('fEmail', d.email);

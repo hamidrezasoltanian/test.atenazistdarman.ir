@@ -95,12 +95,10 @@ if ($isAjax && $_SERVER['REQUEST_METHOD'] === 'POST') {
                    (SELECT COUNT(*) FROM crm_opportunity_calls cc JOIN crm_opportunities oo ON cc.opportunity_id = oo.id WHERE oo.customer_id = c.id) as call_count,
                    (SELECT MAX(cc.call_date) FROM crm_opportunity_calls cc JOIN crm_opportunities oo ON cc.opportunity_id = oo.id WHERE oo.customer_id = c.id) as last_call
             FROM customers c
-            WHERE (c.state = ? OR EXISTS (
-                SELECT 1 FROM customer_addresses ca WHERE ca.company_num = c.company_num AND ca.state = ?
-            ))
+            WHERE c.state = ?
             ORDER BY c.company_name ASC
         ");
-        $stmt->execute([$provName, $provName]);
+        $stmt->execute([$provName]);
         $centers = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         // دریافت مراحل کانبان موجود
@@ -136,7 +134,6 @@ $provinces = $pdo->query("
            u.first_name as expert_fname, u.last_name as expert_lname,
            (SELECT COUNT(DISTINCT c.id) FROM customers c
             WHERE c.state = cp.province_name
-               OR EXISTS (SELECT 1 FROM customer_addresses ca WHERE ca.company_num = c.company_num AND ca.state = cp.province_name)
            ) as center_count
     FROM crm_provinces cp
     LEFT JOIN crm_user_provinces cup ON cup.province_name = cp.province_name
@@ -275,7 +272,7 @@ require_once __DIR__ . '/../../templates/sidebar.php';
 </div>
 
 <!-- مودال تخصیص کارشناس -->
-<div id="assignModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9001;display:flex;align-items:center;justify-content:center">
+<div id="assignModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9001;align-items:center;justify-content:center">
   <div style="background:#fff;border-radius:12px;padding:24px;width:340px;max-width:95vw">
     <h3 style="margin:0 0 16px;font-size:14px;color:#1e293b">تخصیص کارشناس به استان <strong id="assignProvName"></strong></h3>
     <select id="assignUserId" style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:inherit;margin-bottom:16px">

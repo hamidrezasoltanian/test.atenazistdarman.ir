@@ -22,8 +22,7 @@ if ($method === 'GET') {
         exit;
     }
     try {
-        // اضافه شدن ستون t.category به خروجی برای استفاده در رابط کاربری
-        $stmt = $pdo->prepare("SELECT t.id, t.title, t.color, t.category
+        $stmt = $pdo->prepare("SELECT t.id, t.title, t.color, NULL AS category
                                FROM customer_tag_links l
                                JOIN tags t ON t.id = l.tag_id
                                WHERE l.customer_id = ?
