@@ -169,6 +169,8 @@ return [
             ['title' => '📊 داشبورد حسابداری', 'link' => 'admin/fin_accounting_dashboard.php', 'perm' => 'accounting_dashboard'],
             ['title' => '🧾 فاکتور فروش',        'link' => 'admin/fin_invoice_sell.php',       'perm' => 'invoices_sell'],
             ['title' => '📋 پیشفاکتور',           'link' => 'admin/fin_preinvoice.php',         'perm' => 'invoices_sell'],
+            ['title' => '🛒 فاکتور خرید',          'link' => 'admin/fin_invoice_buy.php',        'perm' => 'invoices_buy'],
+            ['title' => '💳 دریافت و پرداخت',      'link' => 'admin/fin_receive_pay.php',        'perm' => 'fin_receive_pay'],
             ['title' => '👥 طرف حساب‌ها',          'link' => 'admin/fin_persons.php',            'perm' => 'fin_persons'],
             ['title' => '📒 پلان حساب‌ها',          'link' => 'admin/fin_accounts.php',           'perm' => 'fin_chart'],
             ['title' => '📄 مدیریت چک‌ها',          'link' => 'admin/fin_cheques.php',            'perm' => 'fin_cheques'],

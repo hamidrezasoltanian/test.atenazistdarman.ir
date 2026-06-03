@@ -1,13 +1,13 @@
 <?php
 /*
  * فایل: public_html/admin/fin_invoice_buy.php
- * توضیحات: فاکتور خرید — ثبت پیش‌نویس، تأیید با سند حسابداری دوطرفه، ویرایش، حذف نرم
- * منطق حسابداری: سبک hesabix
- *   بدهکار:   ۱۲۰  (موجودی کالا / هزینه)              = جمع خالص هر ردیف
- *   بدهکار:   ۹۰   (هزینه حمل)                        = هزینه حمل   (اگر > ۰)
- *   بستانکار: ۸    (حساب پرداختنی / طرف حساب تأمین‌کننده) = مبلغ نهایی
- *   بدهکار:   مالیات پرداختنی (مالیات خرید)           = کل مالیات   (اگر > ۰)
- *   بستانکار: ۵۱   (تخفیفات نقدی خرید)               = کل تخفیف   (اگر > ۰)
+ * فاکتور خرید — پیش‌نویس، تأیید با سند دوطرفه، ویرایش، حذف نرم
+ * منطق hesabix:
+ *   بدهکار:   ۱۲۰  (موجودی کالا)         = جمع خالص ردیف‌ها
+ *   بدهکار:   ۹۰   (هزینه حمل خرید)      = حمل (اگر > ۰)
+ *   بدهکار:   ۳۳   (مالیات خرید)         = کل مالیات (اگر > ۰)
+ *   بستانکار: ۸    (حساب پرداختنی)       = مبلغ نهایی
+ *   بستانکار: ۵۱   (تخفیفات نقدی خرید)  = کل تخفیف (اگر > ۰)
  */
 
 ob_start();
@@ -24,7 +24,6 @@ $isAjax = !empty($_SERVER['HTTP_X_REQUESTED_WITH'])
 $userId  = (int)$_SESSION['user_id'];
 $rawRole = $_SESSION['role'] ?? '';
 
-// ---- بررسی دسترسی ----
 $hasAccess = false;
 try {
     $stmtChk = $pdo->prepare('SELECT name, is_system, permissions FROM roles WHERE id = ? OR name = ?');
@@ -37,7 +36,7 @@ try {
             $hasAccess = true;
         } else {
             $perms = json_decode($roleData['permissions'] ?? '[]', true) ?? [];
-            if (in_array('fin_invoices', $perms) || in_array('all', $perms)) $hasAccess = true;
+            if (in_array('fin_invoices', $perms) || in_array('invoices_buy', $perms) || in_array('all', $perms)) $hasAccess = true;
         }
     }
     if (in_array($rawRole, ['1','2','5','10','14'])) $hasAccess = true;
@@ -53,163 +52,56 @@ if (!$hasAccess) {
     die('<p style="font-family:Tahoma;color:#e11d48;text-align:center;padding:60px">دسترسی غیرمجاز</p>');
 }
 
-// ---- اطمینان از وجود جداول (اشتراکی با فاکتور فروش) ----
+// ---- اطمینان از وجود ستون invoice_type ----
 try {
-    $pdo->exec("CREATE TABLE IF NOT EXISTS `fin_persons` (
-        `id` INT AUTO_INCREMENT PRIMARY KEY,
-        `code` VARCHAR(30) DEFAULT NULL,
-        `name` VARCHAR(150) NOT NULL,
-        `nikename` VARCHAR(100) DEFAULT NULL,
-        `company_name` VARCHAR(200) DEFAULT NULL,
-        `type` ENUM('customer','supplier','both') DEFAULT 'customer',
-        `mobile` VARCHAR(30) DEFAULT NULL,
-        `phone` VARCHAR(30) DEFAULT NULL,
-        `codeeghtesadi` VARCHAR(30) DEFAULT NULL,
-        `shenasemeli` VARCHAR(20) DEFAULT NULL,
-        `address` TEXT DEFAULT NULL,
-        `credit_limit` DECIMAL(20,0) DEFAULT 0,
-        `notes` TEXT DEFAULT NULL,
-        `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
-        `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        `is_deleted` TINYINT DEFAULT 0
+    $pdo->exec("ALTER TABLE fin_invoices ADD COLUMN IF NOT EXISTS invoice_type ENUM('official','adjustment') NOT NULL DEFAULT 'official' AFTER type");
+} catch (Throwable $e) {}
+
+// ---- اطمینان از وجود حساب‌های پایه ----
+try {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS fin_chart_of_accounts (
+        id INT AUTO_INCREMENT PRIMARY KEY, upper_id INT DEFAULT NULL,
+        name VARCHAR(200) NOT NULL, type VARCHAR(50) DEFAULT NULL,
+        code VARCHAR(20) NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        is_deleted TINYINT DEFAULT 0, UNIQUE KEY uq_acc_code (code)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
-    $pdo->exec("CREATE TABLE IF NOT EXISTS `fin_invoices` (
-        `id` INT AUTO_INCREMENT PRIMARY KEY,
-        `invoice_number` VARCHAR(30) NOT NULL,
-        `invoice_date` DATE NOT NULL,
-        `due_date` DATE DEFAULT NULL,
-        `type` ENUM('sell','buy') DEFAULT 'sell',
-        `person_id` INT NOT NULL,
-        `customer_name` VARCHAR(200) DEFAULT NULL,
-        `subtotal` DECIMAL(20,0) DEFAULT 0,
-        `discount` DECIMAL(20,0) DEFAULT 0,
-        `tax` DECIMAL(20,0) DEFAULT 0,
-        `shipping` DECIMAL(20,0) DEFAULT 0,
-        `total_amount` DECIMAL(20,0) DEFAULT 0,
-        `paid_amount` DECIMAL(20,0) DEFAULT 0,
-        `status` ENUM('draft','confirmed','paid','partial','cancelled') DEFAULT 'draft',
-        `notes` TEXT DEFAULT NULL,
-        `opportunity_id` INT DEFAULT NULL,
-        `fiscal_year_id` INT DEFAULT NULL,
-        `fin_doc_id` INT DEFAULT NULL,
-        `created_by` INT NOT NULL,
-        `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
-        `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        `is_deleted` TINYINT DEFAULT 0,
-        UNIQUE KEY `uq_inv_number` (`invoice_number`)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
-
-    $pdo->exec("CREATE TABLE IF NOT EXISTS `fin_invoice_items` (
-        `id` INT AUTO_INCREMENT PRIMARY KEY,
-        `invoice_id` INT NOT NULL,
-        `stuff_id` INT DEFAULT NULL,
-        `description` VARCHAR(500) NOT NULL,
-        `unit` VARCHAR(30) DEFAULT NULL,
-        `qty` DECIMAL(12,4) NOT NULL DEFAULT 1,
-        `unit_price` DECIMAL(20,0) NOT NULL DEFAULT 0,
-        `discount_pct` DECIMAL(5,2) DEFAULT 0,
-        `discount_amt` DECIMAL(20,0) DEFAULT 0,
-        `tax_pct` DECIMAL(5,2) DEFAULT 9,
-        `tax_amt` DECIMAL(20,0) DEFAULT 0,
-        `total` DECIMAL(20,0) NOT NULL DEFAULT 0,
-        `row_order` INT DEFAULT 0
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
-
-    $pdo->exec("CREATE TABLE IF NOT EXISTS `fin_docs` (
-        `id` INT AUTO_INCREMENT PRIMARY KEY,
-        `doc_number` VARCHAR(30) DEFAULT NULL,
-        `doc_date` DATE NOT NULL,
-        `type` VARCHAR(50) DEFAULT 'manual',
-        `tax_percent` DECIMAL(5,2) DEFAULT 0,
-        `description` TEXT DEFAULT NULL,
-        `discount_type` VARCHAR(20) DEFAULT NULL,
-        `discount_percent` DECIMAL(5,2) DEFAULT 0,
-        `fiscal_year_id` INT DEFAULT NULL,
-        `ref_id` INT DEFAULT NULL,
-        `ref_type` VARCHAR(50) DEFAULT NULL,
-        `short_link` VARCHAR(100) DEFAULT NULL,
-        `created_by` INT NOT NULL,
-        `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
-        `is_deleted` TINYINT DEFAULT 0
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
-
-    $pdo->exec("CREATE TABLE IF NOT EXISTS `fin_doc_rows` (
-        `id` INT AUTO_INCREMENT PRIMARY KEY,
-        `doc_id` INT NOT NULL,
-        `account_id` INT DEFAULT NULL,
-        `bd` DECIMAL(20,0) DEFAULT 0,
-        `bs` DECIMAL(20,0) DEFAULT 0,
-        `description` VARCHAR(500) DEFAULT NULL,
-        `person_id` INT DEFAULT NULL,
-        `commodity_id` INT DEFAULT NULL,
-        `commodity_count` DECIMAL(12,4) DEFAULT NULL,
-        `cashdesk_id` INT DEFAULT NULL,
-        `bank_id` INT DEFAULT NULL,
-        `row_discount` DECIMAL(20,0) DEFAULT 0,
-        `row_tax` DECIMAL(20,0) DEFAULT 0,
-        `row_order` INT DEFAULT 0
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
-
-    $pdo->exec("CREATE TABLE IF NOT EXISTS `fin_chart_of_accounts` (
-        `id` INT AUTO_INCREMENT PRIMARY KEY,
-        `upper_id` INT DEFAULT NULL,
-        `name` VARCHAR(200) NOT NULL,
-        `type` VARCHAR(50) DEFAULT NULL,
-        `code` VARCHAR(20) NOT NULL,
-        `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
-        `is_deleted` TINYINT DEFAULT 0,
-        UNIQUE KEY `uq_acc_code` (`code`)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
-
-    $seedAccounts = [
-        ['3',   'حساب دریافتنی'],
-        ['53',  'فروش کالا'],
-        ['61',  'درآمد حمل کالا'],
-        ['104', 'تخفیف فروش'],
-        ['120', 'موجودی کالا'],
-        ['8',   'حساب پرداختنی'],
-        ['90',  'هزینه حمل کالا'],
-        ['51',  'تخفیفات نقدی خرید'],
-        ['121', 'صندوق'],
-        ['122', 'تنخواه گردان'],
+    $seeds = [
+        ['3','حساب دریافتنی'],['8','حساب پرداختنی'],['33','مالیات خرید'],
+        ['51','تخفیفات نقدی خرید'],['53','فروش کالا'],['61','درآمد حمل'],
+        ['90','هزینه حمل خرید'],['120','موجودی کالا'],['121','صندوق'],
         ['2103','مالیات ارزش افزوده پرداختنی'],
     ];
-    $insAcc = $pdo->prepare('INSERT IGNORE INTO fin_chart_of_accounts (code, name, created_at) VALUES (?, ?, NOW())');
-    foreach ($seedAccounts as $a) $insAcc->execute([$a[0], $a[1]]);
-
-} catch (Throwable $e) { /* جداول از قبل وجود داشتند */ }
+    $ins = $pdo->prepare('INSERT IGNORE INTO fin_chart_of_accounts (code,name,created_at) VALUES (?,?,NOW())');
+    foreach ($seeds as $s) $ins->execute($s);
+} catch (Throwable $e) {}
 
 $fiscalYear   = getActiveFiscalYear();
 $fiscalYearId = $fiscalYear ? (int)$fiscalYear['id'] : null;
 
-// ---- تابع کمکی: شناسه حساب بر اساس کد ----
-function accIdByCodeBuy($pdo, $code) {
+function buyAccId($pdo, $code) {
     static $cache = [];
     if (isset($cache[$code])) return $cache[$code];
-    $stmt = $pdo->prepare('SELECT id FROM fin_chart_of_accounts WHERE code = ? AND is_deleted = 0 LIMIT 1');
-    $stmt->execute([$code]);
-    $id = $stmt->fetchColumn();
+    $s = $pdo->prepare('SELECT id FROM fin_chart_of_accounts WHERE code=? AND is_deleted=0 LIMIT 1');
+    $s->execute([$code]);
+    $id = $s->fetchColumn();
     $cache[$code] = $id ? (int)$id : null;
     return $cache[$code];
 }
 
-// ---- شماره‌گذاری خودکار فاکتور ----
-function nextInvoiceNumberBuy($pdo, $type = 'buy') {
-    $prefix = $type === 'sell' ? 'S' : 'B';
-    $year   = (int)date('Y');
+function nextBuyNumber($pdo) {
+    $year = (int)date('Y');
     try {
         $last = $pdo->query(
             "SELECT MAX(CAST(SUBSTRING_INDEX(invoice_number,'-',-1) AS UNSIGNED))
-             FROM fin_invoices WHERE invoice_number LIKE '{$prefix}-{$year}-%'"
+             FROM fin_invoices WHERE invoice_number LIKE 'B-{$year}-%'"
         )->fetchColumn();
     } catch (Throwable $e) { $last = 0; }
-    $seq = (int)$last + 1;
-    return $prefix . '-' . $year . '-' . str_pad($seq, 4, '0', STR_PAD_LEFT);
+    return 'B-' . $year . '-' . str_pad((int)$last + 1, 4, '0', STR_PAD_LEFT);
 }
 
 // ===========================================================
-// پردازش درخواست‌های AJAX
+// AJAX
 // ===========================================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isAjax) {
     ob_clean();
@@ -218,183 +110,109 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isAjax) {
 
     try {
 
-        // ---- لیست فاکتورهای خرید ----
+        // ---- لیست ----
         if ($action === 'list') {
-            $page    = max(1, (int)($_POST['page'] ?? 1));
+            $page    = max(1,(int)($_POST['page'] ?? 1));
             $perPage = 20;
             $offset  = ($page - 1) * $perPage;
             $dfrom   = trim($_POST['date_from'] ?? '');
             $dto     = trim($_POST['date_to']   ?? '');
-            $pid     = (int)($_POST['person_id'] ?? 0);
             $status  = trim($_POST['status']    ?? '');
 
-            $where  = ["i.is_deleted = 0", "i.type = 'buy'"];
+            $where  = ["i.is_deleted=0","i.type='buy'"];
             $params = [];
-
             if ($dfrom)  { $where[] = 'i.invoice_date >= ?'; $params[] = $dfrom; }
             if ($dto)    { $where[] = 'i.invoice_date <= ?'; $params[] = $dto; }
-            if ($pid)    { $where[] = 'i.person_id = ?';    $params[] = $pid; }
-            if ($status) { $where[] = 'i.status = ?';       $params[] = $status; }
+            if ($status) { $where[] = 'i.status = ?';        $params[] = $status; }
 
             $ws = implode(' AND ', $where);
 
-            $stS = $pdo->prepare(
-                "SELECT COUNT(*) cnt, COALESCE(SUM(i.total_amount),0) ts,
-                        COALESCE(SUM(i.paid_amount),0) ps
-                 FROM fin_invoices i WHERE $ws"
-            );
+            $stS = $pdo->prepare("SELECT COUNT(*) cnt, COALESCE(SUM(total_amount),0) ts, COALESCE(SUM(paid_amount),0) ps FROM fin_invoices i WHERE $ws");
             $stS->execute($params);
             $stats = $stS->fetch();
 
             $stL = $pdo->prepare(
-                "SELECT i.id, i.invoice_number, i.invoice_date, i.due_date,
-                        i.subtotal, i.discount, i.tax, i.shipping,
+                "SELECT i.id, i.invoice_number, i.invoice_date,
                         i.total_amount, i.paid_amount, i.status, i.fin_doc_id,
+                        COALESCE(i.invoice_type,'official') AS invoice_type,
                         (i.total_amount - i.paid_amount) AS remaining,
                         COALESCE(p.company_name, p.name, i.customer_name) AS person_name
                  FROM fin_invoices i
                  LEFT JOIN fin_persons p ON p.id = i.person_id
-                 WHERE $ws
-                 ORDER BY i.id DESC
-                 LIMIT $perPage OFFSET $offset"
+                 WHERE $ws ORDER BY i.id DESC LIMIT $perPage OFFSET $offset"
             );
             $stL->execute($params);
             $rows = $stL->fetchAll(PDO::FETCH_ASSOC);
 
-            $statusLabels = [
-                'draft'     => ['label' => 'پیش‌نویس',     'cls' => 'draft'],
-                'confirmed' => ['label' => 'تأیید شده',    'cls' => 'confirmed'],
-                'paid'      => ['label' => 'پرداخت کامل', 'cls' => 'paid'],
-                'partial'   => ['label' => 'پرداخت ناقص', 'cls' => 'partial'],
-                'cancelled' => ['label' => 'لغو شده',      'cls' => 'cancelled'],
+            $sLabels = [
+                'draft'     => ['label'=>'پیش‌نویس',     'cls'=>'draft'],
+                'confirmed' => ['label'=>'تأیید شده',    'cls'=>'confirmed'],
+                'paid'      => ['label'=>'پرداخت کامل', 'cls'=>'paid'],
+                'partial'   => ['label'=>'پرداخت ناقص', 'cls'=>'partial'],
+                'cancelled' => ['label'=>'لغو شده',      'cls'=>'cancelled'],
             ];
-
             foreach ($rows as &$r) {
                 $r['total_fmt']   = number_format((int)$r['total_amount']);
                 $r['paid_fmt']    = number_format((int)$r['paid_amount']);
-                $r['remain_fmt']  = number_format(max(0, (int)$r['remaining']));
+                $r['remain_fmt']  = number_format(max(0,(int)$r['remaining']));
                 $r['date_jalali'] = jdate('Y/m/d', $r['invoice_date']);
-                $sl = $statusLabels[$r['status']] ?? ['label' => $r['status'], 'cls' => 'draft'];
+                $sl = $sLabels[$r['status']] ?? ['label'=>$r['status'],'cls'=>'draft'];
                 $r['status_label'] = $sl['label'];
                 $r['status_class'] = $sl['cls'];
             }
             unset($r);
 
-            $totalPages = max(1, (int)ceil($stats['cnt'] / $perPage));
-
+            $totalPages = max(1,(int)ceil($stats['cnt'] / $perPage));
             echo json_encode([
-                'ok'    => true,
-                'rows'  => $rows,
+                'ok'   => true, 'rows' => $rows,
                 'stats' => [
                     'count'     => (int)$stats['cnt'],
                     'total_sum' => number_format((int)$stats['ts']),
                     'paid_sum'  => number_format((int)$stats['ps']),
-                    'remain'    => number_format(max(0, (int)$stats['ts'] - (int)$stats['ps'])),
+                    'remain'    => number_format(max(0,(int)$stats['ts']-(int)$stats['ps'])),
                 ],
-                'pagination' => [
-                    'page'        => $page,
-                    'total_pages' => $totalPages,
-                    'total_rows'  => (int)$stats['cnt'],
-                ],
+                'pagination' => ['page'=>$page,'total_pages'=>$totalPages,'total_rows'=>(int)$stats['cnt']],
             ]);
             exit;
         }
 
-        // ---- جستجوی طرف حساب (تأمین‌کننده) ----
+        // ---- جستجوی تأمین‌کننده ----
         if ($action === 'search_persons') {
-            $q = '%' . trim($_POST['q'] ?? '') . '%';
+            $q = '%'.trim($_POST['q'] ?? '').'%';
             $stmt = $pdo->prepare(
                 "SELECT id,
-                        CONCAT(COALESCE(company_name,''), IF(company_name IS NOT NULL AND company_name != '' AND name != '', ' — ', ''), name) AS display_name
-                 FROM fin_persons
-                 WHERE is_deleted = 0
-                   AND type IN ('supplier','both')
+                        CONCAT(COALESCE(company_name,''), IF(company_name IS NOT NULL AND company_name!='' AND name!='', ' — ', ''), name) AS display_name
+                 FROM fin_persons WHERE is_deleted=0 AND type IN ('supplier','both')
                    AND (name LIKE ? OR company_name LIKE ? OR mobile LIKE ?)
                  ORDER BY name LIMIT 20"
             );
-            $stmt->execute([$q, $q, $q]);
-            $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-            // اگر نتیجه‌ای نبود، همه را نشان دهیم
-            if (empty($results)) {
-                $stmt2 = $pdo->prepare(
-                    "SELECT id,
-                            CONCAT(COALESCE(company_name,''), IF(company_name IS NOT NULL AND company_name != '' AND name != '', ' — ', ''), name) AS display_name
-                     FROM fin_persons
-                     WHERE is_deleted = 0
-                       AND (name LIKE ? OR company_name LIKE ? OR mobile LIKE ?)
-                     ORDER BY name LIMIT 20"
-                );
-                $stmt2->execute([$q, $q, $q]);
-                $results = $stmt2->fetchAll(PDO::FETCH_ASSOC);
-            }
-
-            echo json_encode(['ok' => true, 'results' => $results]);
+            $stmt->execute([$q,$q,$q]);
+            echo json_encode(['ok'=>true,'results'=>$stmt->fetchAll(PDO::FETCH_ASSOC)]);
             exit;
         }
 
         // ---- جستجوی کالا ----
         if ($action === 'search_stuffs') {
-            $q = '%' . trim($_POST['q'] ?? '') . '%';
+            $q = '%'.trim($_POST['q'] ?? '').'%';
             try {
                 $stmt = $pdo->prepare(
                     "SELECT s.id, s.name, s.code,
                             COALESCE(spl.price_buy, s.price_buy, 0) AS price,
                             COALESCE(s.unit,'') AS unit
-                     FROM stuffs s
-                     LEFT JOIN stuff_price_list spl ON spl.stuff_id = s.id
-                     WHERE s.is_deleted = 0 AND (s.name LIKE ? OR s.code LIKE ?)
+                     FROM stuffs s LEFT JOIN stuff_price_list spl ON spl.stuff_id=s.id
+                     WHERE s.is_deleted=0 AND (s.name LIKE ? OR s.code LIKE ?)
                      ORDER BY s.name LIMIT 20"
                 );
-                $stmt->execute([$q, $q]);
+                $stmt->execute([$q,$q]);
                 $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
             } catch (Throwable $e) {
                 try {
-                    $stmt2 = $pdo->prepare("SELECT id, name, '' AS code, 0 AS price, '' AS unit FROM stuffs WHERE is_deleted = 0 AND name LIKE ? LIMIT 20");
+                    $stmt2 = $pdo->prepare("SELECT id,name,'' AS code,0 AS price,'' AS unit FROM stuffs WHERE is_deleted=0 AND name LIKE ? LIMIT 20");
                     $stmt2->execute([$q]);
                     $rows = $stmt2->fetchAll(PDO::FETCH_ASSOC);
                 } catch (Throwable $e2) { $rows = []; }
             }
-            echo json_encode(['ok' => true, 'results' => $rows]);
-            exit;
-        }
-
-        // ---- قیمت خرید یک کالا ----
-        if ($action === 'get_stuff_price') {
-            $sid = (int)($_POST['stuff_id'] ?? 0);
-            if (!$sid) { echo json_encode(['ok' => false]); exit; }
-            try {
-                $p = $pdo->prepare(
-                    "SELECT COALESCE(spl.price_buy, s.price_buy, 0) AS price_buy
-                     FROM stuffs s LEFT JOIN stuff_price_list spl ON spl.stuff_id = s.id
-                     WHERE s.id = ? LIMIT 1"
-                );
-                $p->execute([$sid]);
-                $price = (int)$p->fetchColumn();
-            } catch (Throwable $e) { $price = 0; }
-            echo json_encode(['ok' => true, 'price' => $price]);
-            exit;
-        }
-
-        // ---- ذخیره پیش‌نویس ----
-        if ($action === 'save_draft') {
-            if (!csrf_verify($_POST['csrf_token'] ?? '')) {
-                echo json_encode(['ok' => false, 'msg' => 'خطای امنیتی. صفحه را رفرش کنید.']);
-                exit;
-            }
-            $result = saveBuyInvoiceToDb($pdo, 'draft', $userId, $fiscalYearId);
-            echo json_encode($result);
-            exit;
-        }
-
-        // ---- تأیید فاکتور + سند حسابداری ----
-        if ($action === 'confirm_invoice') {
-            if (!csrf_verify($_POST['csrf_token'] ?? '')) {
-                echo json_encode(['ok' => false, 'msg' => 'خطای امنیتی.']);
-                exit;
-            }
-            $result = saveBuyInvoiceToDb($pdo, 'confirmed', $userId, $fiscalYearId);
-            echo json_encode($result);
+            echo json_encode(['ok'=>true,'results'=>$rows]);
             exit;
         }
 
@@ -403,266 +221,246 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isAjax) {
             $id = (int)($_POST['id'] ?? 0);
             $st = $pdo->prepare(
                 "SELECT i.*, COALESCE(p.company_name, p.name, i.customer_name) AS person_name
-                 FROM fin_invoices i
-                 LEFT JOIN fin_persons p ON p.id = i.person_id
-                 WHERE i.id = ? AND i.is_deleted = 0 AND i.type = 'buy'"
+                 FROM fin_invoices i LEFT JOIN fin_persons p ON p.id=i.person_id
+                 WHERE i.id=? AND i.is_deleted=0 AND i.type='buy'"
             );
             $st->execute([$id]);
             $inv = $st->fetch(PDO::FETCH_ASSOC);
-            if (!$inv) { echo json_encode(['ok' => false, 'msg' => 'فاکتور یافت نشد.']); exit; }
-
-            $stI = $pdo->prepare('SELECT * FROM fin_invoice_items WHERE invoice_id = ? ORDER BY row_order');
+            if (!$inv) { echo json_encode(['ok'=>false,'msg'=>'فاکتور یافت نشد.']); exit; }
+            $stI = $pdo->prepare('SELECT * FROM fin_invoice_items WHERE invoice_id=? ORDER BY row_order');
             $stI->execute([$id]);
             $inv['items']       = $stI->fetchAll(PDO::FETCH_ASSOC);
             $inv['date_jalali'] = jdate('Y/m/d', $inv['invoice_date']);
-            echo json_encode(['ok' => true, 'invoice' => $inv]);
+            echo json_encode(['ok'=>true,'invoice'=>$inv]);
+            exit;
+        }
+
+        // ---- ذخیره پیش‌نویس ----
+        if ($action === 'save_draft') {
+            if (!csrf_verify($_POST['csrf_token'] ?? '')) { echo json_encode(['ok'=>false,'msg'=>'خطای امنیتی.']); exit; }
+            echo json_encode(saveBuyInvoice($pdo, 'draft', $userId, $fiscalYearId));
+            exit;
+        }
+
+        // ---- تأیید ----
+        if ($action === 'confirm_invoice') {
+            if (!csrf_verify($_POST['csrf_token'] ?? '')) { echo json_encode(['ok'=>false,'msg'=>'خطای امنیتی.']); exit; }
+            echo json_encode(saveBuyInvoice($pdo, 'confirmed', $userId, $fiscalYearId));
             exit;
         }
 
         // ---- حذف نرم ----
         if ($action === 'delete') {
-            if (!csrf_verify($_POST['csrf_token'] ?? '')) {
-                echo json_encode(['ok' => false, 'msg' => 'خطای امنیتی.']); exit;
+            if (!csrf_verify($_POST['csrf_token'] ?? '')) { echo json_encode(['ok'=>false,'msg'=>'خطای امنیتی.']); exit; }
+            $id  = (int)($_POST['id'] ?? 0);
+            $chk = $pdo->prepare("SELECT status, created_by FROM fin_invoices WHERE id=? AND is_deleted=0");
+            $chk->execute([$id]);
+            $inv = $chk->fetch();
+            if (!$inv) { echo json_encode(['ok'=>false,'msg'=>'فاکتور یافت نشد.']); exit; }
+            if ($inv['status']==='confirmed' && strtolower($rawRole)!=='admin' && $inv['created_by']!=$userId) {
+                echo json_encode(['ok'=>false,'msg'=>'فاکتور تأیید شده را نمی‌توان حذف کرد.']); exit;
             }
-            $id = (int)($_POST['id'] ?? 0);
-            $st = $pdo->prepare("SELECT status, created_by FROM fin_invoices WHERE id = ? AND is_deleted = 0 AND type = 'buy'");
-            $st->execute([$id]);
-            $inv = $st->fetch();
-            if (!$inv) { echo json_encode(['ok' => false, 'msg' => 'فاکتور یافت نشد.']); exit; }
-            if ($inv['status'] === 'confirmed' && strtolower($rawRole) !== 'admin' && $inv['created_by'] != $userId) {
-                echo json_encode(['ok' => false, 'msg' => 'فاکتور تأیید شده را نمی‌توان حذف کرد.']); exit;
-            }
-            $pdo->prepare('UPDATE fin_invoices SET is_deleted = 1, updated_at = NOW() WHERE id = ?')->execute([$id]);
-            echo json_encode(['ok' => true, 'msg' => 'فاکتور حذف شد.']);
+            $pdo->prepare('UPDATE fin_invoices SET is_deleted=1, updated_at=NOW() WHERE id=?')->execute([$id]);
+            echo json_encode(['ok'=>true,'msg'=>'فاکتور حذف شد.']);
             exit;
         }
 
-        // ---- لغو فاکتور ----
-        if ($action === 'cancel_invoice') {
-            if (!csrf_verify($_POST['csrf_token'] ?? '')) {
-                echo json_encode(['ok' => false, 'msg' => 'خطای امنیتی.']); exit;
-            }
-            $id = (int)($_POST['id'] ?? 0);
-            $pdo->prepare("UPDATE fin_invoices SET status = 'cancelled', updated_at = NOW() WHERE id = ? AND type = 'buy'")->execute([$id]);
-            echo json_encode(['ok' => true, 'msg' => 'فاکتور لغو شد.']);
-            exit;
-        }
-
-        // ---- لیست تأمین‌کنندگان برای فیلتر ----
-        if ($action === 'get_person_list') {
-            $stmt = $pdo->query("SELECT id, COALESCE(company_name, name) AS name FROM fin_persons WHERE is_deleted = 0 AND type IN ('supplier','both') ORDER BY name LIMIT 100");
-            echo json_encode(['ok' => true, 'results' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
-            exit;
-        }
-
-        echo json_encode(['ok' => false, 'msg' => 'درخواست نامعتبر.']);
+        echo json_encode(['ok'=>false,'msg'=>'درخواست نامعتبر.']);
 
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();
-        error_log('fin_invoice_buy AJAX error: ' . $e->getMessage());
-        echo json_encode(['ok' => false, 'msg' => 'خطای سرور: ' . $e->getMessage()]);
+        error_log('fin_invoice_buy AJAX: '.$e->getMessage());
+        echo json_encode(['ok'=>false,'msg'=>'خطای سرور: '.$e->getMessage()]);
     }
     exit;
 }
 
 // ---- تابع ذخیره/تأیید فاکتور خرید ----
-function saveBuyInvoiceToDb($pdo, $targetStatus, $userId, $fiscalYearId) {
-    $editId   = (int)($_POST['invoice_id'] ?? 0);
-    $personId = (int)($_POST['person_id']  ?? 0);
+function saveBuyInvoice($pdo, $targetStatus, $userId, $fiscalYearId) {
+    $editId   = (int)($_POST['invoice_id']   ?? 0);
+    $personId = (int)($_POST['person_id']     ?? 0);
     $invDate  = trim(faToEn($_POST['invoice_date'] ?? ''));
     $dueDate  = trim(faToEn($_POST['due_date']     ?? '')) ?: null;
     $notes    = trim($_POST['notes'] ?? '');
-    $shipping = (int)str_replace([',', ' '], '', faToEn($_POST['shipping'] ?? '0'));
+    $shipping = (int)str_replace([',',' '],'',faToEn($_POST['shipping'] ?? '0'));
     $items    = $_POST['items'] ?? [];
+    $invType  = in_array($_POST['invoice_type'] ?? '',['official','adjustment'])
+                ? $_POST['invoice_type'] : 'official';
+    $noTax    = ($invType === 'adjustment');
 
-    if (!$personId) return ['ok' => false, 'msg' => 'انتخاب تأمین‌کننده الزامی است.'];
-    if (empty($items)) return ['ok' => false, 'msg' => 'حداقل یک ردیف کالا الزامی است.'];
+    if (!$personId) return ['ok'=>false,'msg'=>'انتخاب تأمین‌کننده الزامی است.'];
+    if (empty($items)) return ['ok'=>false,'msg'=>'حداقل یک ردیف کالا الزامی است.'];
     if (!$invDate || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $invDate))
-        return ['ok' => false, 'msg' => 'فرمت تاریخ نادرست است.'];
+        return ['ok'=>false,'msg'=>'فرمت تاریخ نادرست است.'];
 
-    // نام طرف حساب
-    $stPerson = $pdo->prepare('SELECT COALESCE(company_name, name) AS n FROM fin_persons WHERE id = ?');
-    $stPerson->execute([$personId]);
-    $personName = $stPerson->fetchColumn() ?: '';
+    $stP = $pdo->prepare('SELECT COALESCE(company_name, name) AS n FROM fin_persons WHERE id=?');
+    $stP->execute([$personId]);
+    $personName = $stP->fetchColumn() ?: '';
 
-    // محاسبه مبالغ
-    $subtotal      = 0;
-    $totalDiscount = 0;
-    $totalTax      = 0;
-    $cleanItems    = [];
+    $subtotal = $totalDiscount = $totalTax = 0;
+    $cleanItems = [];
 
     foreach ($items as $item) {
-        $desc   = trim($item['description'] ?? '');
+        $desc  = trim($item['description'] ?? '');
         if (!$desc) continue;
-        $qty    = (float)faToEn($item['qty']          ?? 1);
-        $price  = (int)str_replace([',', ' '], '', faToEn($item['unit_price'] ?? '0'));
-        $discP  = (float)faToEn($item['discount_pct'] ?? '0');
-        $taxP   = (float)faToEn($item['tax_pct']      ?? '9');
-        $sid    = (int)($item['stuff_id'] ?? 0) ?: null;
-        $unit   = trim($item['unit'] ?? '');
+        $qty   = (float)faToEn($item['qty'] ?? 1);
+        $price = (int)str_replace([',',' '],'',faToEn($item['unit_price'] ?? '0'));
+        $discP = (float)faToEn($item['discount_pct'] ?? '0');
+        $taxP  = $noTax ? 0.0 : (float)faToEn($item['tax_pct'] ?? '9');
+        $sid   = (int)($item['stuff_id'] ?? 0) ?: null;
+        $unit  = trim($item['unit'] ?? '');
 
-        $gross  = (int)round($qty * $price);
-        $dAmt   = (int)round($gross * $discP / 100);
-        $after  = $gross - $dAmt;
-        $tAmt   = (int)round($after * $taxP / 100);
-        $total  = $after + $tAmt;
+        $gross = (int)round($qty * $price);
+        $dAmt  = (int)round($gross * $discP / 100);
+        $after = $gross - $dAmt;
+        $tAmt  = (int)round($after * $taxP / 100);
+        $total = $after + $tAmt;
 
         $subtotal      += $gross;
         $totalDiscount += $dAmt;
         $totalTax      += $tAmt;
 
         $cleanItems[] = [
-            'stuff_id'     => $sid,
-            'description'  => $desc,
-            'unit'         => $unit,
-            'qty'          => $qty,
-            'unit_price'   => $price,
-            'discount_pct' => $discP,
-            'discount_amt' => $dAmt,
-            'tax_pct'      => $taxP,
-            'tax_amt'      => $tAmt,
-            'total'        => $total,
+            'stuff_id'=>$sid, 'description'=>$desc, 'unit'=>$unit, 'qty'=>$qty,
+            'unit_price'=>$price, 'discount_pct'=>$discP, 'discount_amt'=>$dAmt,
+            'tax_pct'=>$taxP, 'tax_amt'=>$tAmt, 'total'=>$total,
         ];
     }
 
-    if (empty($cleanItems)) return ['ok' => false, 'msg' => 'ردیف‌های معتبر وارد نشده.'];
+    if (empty($cleanItems)) return ['ok'=>false,'msg'=>'ردیف‌های معتبر وارد نشده.'];
 
-    $netPurchase = $subtotal - $totalDiscount; // خرید خالص بدون مالیات
+    $netPurchase = $subtotal - $totalDiscount;
     $totalAmount = $netPurchase + $totalTax + $shipping;
 
     $pdo->beginTransaction();
 
     if ($editId > 0) {
-        $chk = $pdo->prepare("SELECT status FROM fin_invoices WHERE id = ? AND is_deleted = 0 AND type = 'buy'");
+        $chk = $pdo->prepare("SELECT status FROM fin_invoices WHERE id=? AND is_deleted=0 AND type='buy'");
         $chk->execute([$editId]);
         $curStatus = $chk->fetchColumn();
         if ($curStatus && $curStatus !== 'draft' && $targetStatus === 'draft') {
             $pdo->rollBack();
-            return ['ok' => false, 'msg' => 'فاکتور تأیید شده را نمی‌توان ویرایش کرد.'];
+            return ['ok'=>false,'msg'=>'فاکتور تأیید شده را نمی‌توان ویرایش کرد.'];
         }
-        $pdo->prepare('DELETE FROM fin_invoice_items WHERE invoice_id = ?')->execute([$editId]);
+        $pdo->prepare('DELETE FROM fin_invoice_items WHERE invoice_id=?')->execute([$editId]);
         $pdo->prepare(
-            "UPDATE fin_invoices SET person_id=?, customer_name=?, invoice_date=?, due_date=?,
-                     subtotal=?, discount=?, tax=?, shipping=?, total_amount=?,
-                     status=?, notes=?, updated_at=NOW()
+            "UPDATE fin_invoices SET person_id=?,customer_name=?,invoice_date=?,due_date=?,
+                     subtotal=?,discount=?,tax=?,shipping=?,total_amount=?,
+                     status=?,notes=?,invoice_type=?,updated_at=NOW()
              WHERE id=? AND is_deleted=0"
         )->execute([
-            $personId, $personName, $invDate, $dueDate,
-            $subtotal, $totalDiscount, $totalTax, $shipping, $totalAmount,
-            $targetStatus, $notes, $editId,
+            $personId,$personName,$invDate,$dueDate,
+            $subtotal,$totalDiscount,$totalTax,$shipping,$totalAmount,
+            $targetStatus,$notes,$invType,$editId,
         ]);
         $invoiceId     = $editId;
         $invoiceNumber = $pdo->query("SELECT invoice_number FROM fin_invoices WHERE id=$editId")->fetchColumn();
     } else {
-        $invoiceNumber = nextInvoiceNumberBuy($pdo, 'buy');
+        $invoiceNumber = nextBuyNumber($pdo);
         $pdo->prepare(
             "INSERT INTO fin_invoices
-                (invoice_number, invoice_date, due_date, type, person_id, customer_name,
+                (invoice_number, invoice_date, due_date, type, invoice_type, person_id, customer_name,
                  subtotal, discount, tax, shipping, total_amount, paid_amount,
                  status, notes, fiscal_year_id, created_by, created_at)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,0,?,?,?,?,NOW())"
+             VALUES (?,?,?,'buy',?,?,?,?,?,?,?,?,0,?,?,?,?,NOW())"
         )->execute([
-            $invoiceNumber, $invDate, $dueDate, 'buy', $personId, $personName,
-            $subtotal, $totalDiscount, $totalTax, $shipping, $totalAmount,
-            $targetStatus, $notes, $fiscalYearId, $userId,
+            $invoiceNumber,$invDate,$dueDate,$invType,$personId,$personName,
+            $subtotal,$totalDiscount,$totalTax,$shipping,$totalAmount,
+            $targetStatus,$notes,$fiscalYearId,$userId,
         ]);
         $invoiceId = (int)$pdo->lastInsertId();
     }
 
-    // درج ردیف‌های فاکتور
     $stItem = $pdo->prepare(
         "INSERT INTO fin_invoice_items
-            (invoice_id, stuff_id, description, unit, qty, unit_price,
-             discount_pct, discount_amt, tax_pct, tax_amt, total, row_order)
+            (invoice_id,stuff_id,description,unit,qty,unit_price,
+             discount_pct,discount_amt,tax_pct,tax_amt,total,row_order)
          VALUES (?,?,?,?,?,?,?,?,?,?,?,?)"
     );
     foreach ($cleanItems as $idx => $it) {
         $stItem->execute([
-            $invoiceId, $it['stuff_id'], $it['description'], $it['unit'],
-            $it['qty'], $it['unit_price'],
-            $it['discount_pct'], $it['discount_amt'],
-            $it['tax_pct'], $it['tax_amt'],
-            $it['total'], $idx + 1,
+            $invoiceId,$it['stuff_id'],$it['description'],$it['unit'],
+            $it['qty'],$it['unit_price'],
+            $it['discount_pct'],$it['discount_amt'],
+            $it['tax_pct'],$it['tax_amt'],
+            $it['total'],$idx+1,
         ]);
     }
 
-    // ---- سند حسابداری دوطرفه فقط در صورت تأیید ----
+    // ---- سند حسابداری دوطرفه (تأیید) ----
     $docId = null;
     if ($targetStatus === 'confirmed') {
-        $accInventory  = accIdByCodeBuy($pdo, '120');   // بدهکار: موجودی کالا
-        $accPayable    = accIdByCodeBuy($pdo, '8');     // بستانکار: حساب پرداختنی
-        $accShippingAc = accIdByCodeBuy($pdo, '90');    // بدهکار: هزینه حمل
-        $accDiscBuy    = accIdByCodeBuy($pdo, '51');    // بستانکار: تخفیف خرید
-        $accTax        = accIdByCodeBuy($pdo, '2103');  // بدهکار: مالیات خرید
+        $accInventory = buyAccId($pdo, '120');  // بدهکار: موجودی کالا
+        $accFreight   = buyAccId($pdo, '90');   // بدهکار: هزینه حمل
+        $accTaxBuy    = buyAccId($pdo, '33');   // بدهکار: مالیات خرید
+        $accPayable   = buyAccId($pdo, '8');    // بستانکار: حساب پرداختنی
+        $accDiscount  = buyAccId($pdo, '51');   // بستانکار: تخفیف خرید
 
+        $docDesc = $invType === 'adjustment'
+            ? 'فاکتور تنظیمی خرید شماره '.$invoiceNumber
+            : 'فاکتور رسمی خرید شماره '.$invoiceNumber;
         $pdo->prepare(
-            "INSERT INTO fin_docs (doc_number, doc_date, type, description, fiscal_year_id, ref_id, ref_type, created_by, created_at)
+            "INSERT INTO fin_docs (doc_number,doc_date,type,description,fiscal_year_id,ref_id,ref_type,created_by,created_at)
              VALUES (?,?,?,?,?,?,?,?,NOW())"
         )->execute([
-            $invoiceNumber, $invDate, 'buy_invoice',
-            'فاکتور خرید شماره ' . $invoiceNumber,
-            $fiscalYearId, $invoiceId, 'fin_invoice', $userId,
+            $invoiceNumber,$invDate,
+            $invType==='adjustment'?'buy_invoice_adj':'buy_invoice',
+            $docDesc,$fiscalYearId,$invoiceId,'fin_invoice_buy',$userId,
         ]);
         $docId = (int)$pdo->lastInsertId();
 
         $stRow = $pdo->prepare(
-            "INSERT INTO fin_doc_rows (doc_id, account_id, bd, bs, description, person_id, row_order)
+            "INSERT INTO fin_doc_rows (doc_id,account_id,bd,bs,description,person_id,row_order)
              VALUES (?,?,?,?,?,?,?)"
         );
-        $rowOrder = 1;
+        $o = 1;
 
-        // بدهکار — موجودی کالا = خرید خالص (بدون مالیات، پس از کسر تخفیف)
-        if ($netPurchase > 0 && $accInventory) {
-            $stRow->execute([$docId, $accInventory, $netPurchase, 0, 'بدهکار — موجودی کالا خریداری شده', null, $rowOrder++]);
-        }
+        // بدهکار: موجودی کالا = خالص خرید (بدون مالیات)
+        if ($netPurchase > 0 && $accInventory)
+            $stRow->execute([$docId,$accInventory,$netPurchase,0,'بدهکار — موجودی کالا',null,$o++]);
 
-        // بدهکار — مالیات بر خرید
-        if ($totalTax > 0 && $accTax) {
-            $stRow->execute([$docId, $accTax, $totalTax, 0, 'بدهکار — مالیات بر خرید', null, $rowOrder++]);
-        }
+        // بدهکار: مالیات خرید
+        if ($totalTax > 0 && $accTaxBuy)
+            $stRow->execute([$docId,$accTaxBuy,$totalTax,0,'بدهکار — مالیات خرید',null,$o++]);
 
-        // بدهکار — هزینه حمل
-        if ($shipping > 0 && $accShippingAc) {
-            $stRow->execute([$docId, $accShippingAc, $shipping, 0, 'بدهکار — هزینه حمل کالا', null, $rowOrder++]);
-        }
+        // بدهکار: هزینه حمل
+        if ($shipping > 0 && $accFreight)
+            $stRow->execute([$docId,$accFreight,$shipping,0,'بدهکار — هزینه حمل',null,$o++]);
 
-        // بستانکار — حساب پرداختنی = مبلغ کل (بدهی به تأمین‌کننده)
-        $stRow->execute([$docId, $accPayable, 0, $totalAmount, 'بستانکار — بدهی به تأمین‌کننده', $personId, $rowOrder++]);
+        // بستانکار: حساب پرداختنی = مبلغ کل
+        if ($accPayable)
+            $stRow->execute([$docId,$accPayable,0,$totalAmount,'بستانکار — حساب پرداختنی',$personId,$o++]);
 
-        // تخفیف دریافتی از تأمین‌کننده: بستانکار حساب تخفیف خرید
-        // در مدل hesabix تخفیف از موجودی کسر می‌شود (netPurchase قبلاً با تخفیف محاسبه شده)
-        // ردیف جداگانه برای مستندات:
-        if ($totalDiscount > 0 && $accDiscBuy) {
-            // اصلاح: بدهکار حساب پرداختنی، بستانکار تخفیف خرید
-            $stRow->execute([$docId, $accPayable,  $totalDiscount, 0, 'بدهکار — تخفیف دریافتی از تأمین‌کننده', $personId, $rowOrder++]);
-            $stRow->execute([$docId, $accDiscBuy,  0, $totalDiscount, 'بستانکار — تخفیفات نقدی خرید', null, $rowOrder++]);
-        }
+        // بستانکار: تخفیف خرید (کاهنده بهای تمام شده)
+        if ($totalDiscount > 0 && $accDiscount)
+            $stRow->execute([$docId,$accDiscount,0,$totalDiscount,'بستانکار — تخفیفات خرید',null,$o++]);
 
-        $pdo->prepare('UPDATE fin_invoices SET fin_doc_id=?, updated_at=NOW() WHERE id=?')->execute([$docId, $invoiceId]);
+        $pdo->prepare('UPDATE fin_invoices SET fin_doc_id=?,updated_at=NOW() WHERE id=?')->execute([$docId,$invoiceId]);
 
-        // به‌روزرسانی موجودی کالا در stuff_price_list
+        // رسید انبار خودکار
         try {
-            $stUpdInv = $pdo->prepare(
-                "UPDATE stuff_price_list SET total_inventory = total_inventory + ?
-                 WHERE stuff_id = ?"
-            );
-            foreach ($cleanItems as $it) {
-                if ($it['stuff_id']) {
-                    $stUpdInv->execute([$it['qty'], $it['stuff_id']]);
-                    // اگر رکوردی وجود نداشت، بساز
-                    if ($stUpdInv->rowCount() === 0) {
-                        $pdo->prepare(
-                            "INSERT INTO stuff_price_list (stuff_id, total_inventory, price_buy, created_at)
-                             VALUES (?, ?, ?, NOW())
-                             ON DUPLICATE KEY UPDATE total_inventory = total_inventory + ?"
-                        )->execute([$it['stuff_id'], $it['qty'], $it['unit_price'], $it['qty']]);
+            $hasStuffs = false;
+            foreach ($cleanItems as $it) { if ($it['stuff_id']) { $hasStuffs=true; break; } }
+            if ($hasStuffs) {
+                $storoomId = $pdo->query("SELECT id FROM inv_storerooms WHERE is_active=1 AND is_deleted=0 ORDER BY id LIMIT 1")->fetchColumn();
+                if ($storoomId) {
+                    $seq  = $pdo->query("SELECT COALESCE(MAX(id),0)+1 FROM inv_tickets")->fetchColumn();
+                    $tNum = 'RC-'.date('Y').'-'.str_pad($seq,4,'0',STR_PAD_LEFT);
+                    $pdo->prepare(
+                        "INSERT INTO inv_tickets (ticket_number,type,ticket_date,storeroom_id,person_id,ref_type,ref_id,status,created_by)
+                         VALUES (?,?,?,?,?,?,?,?,?)"
+                    )->execute([$tNum,'receipt',date('Y-m-d'),$storoomId,$personId,'invoice_buy',$invoiceId,'confirmed',$userId]);
+                    $tid = (int)$pdo->lastInsertId();
+                    foreach ($cleanItems as $it) {
+                        if (!$it['stuff_id']) continue;
+                        $pdo->prepare("INSERT INTO inv_ticket_items (ticket_id,stuff_id,qty,unit_price,total) VALUES (?,?,?,?,?)")
+                            ->execute([$tid,$it['stuff_id'],$it['qty'],$it['unit_price'],$it['total']]);
+                        $pdo->prepare("UPDATE stuff_price_list SET total_inventory=total_inventory+? WHERE stuff_id=?")
+                            ->execute([$it['qty'],$it['stuff_id']]);
                     }
                 }
             }
-        } catch (Throwable $invErr) {
-            // به‌روزرسانی موجودی ناموفق — فاکتور همچنان ذخیره می‌شود
-            error_log('fin_invoice_buy inventory update error: ' . $invErr->getMessage());
-        }
+        } catch (Throwable $e) {}
     }
 
     $pdo->commit();
@@ -674,7 +472,7 @@ function saveBuyInvoiceToDb($pdo, $targetStatus, $userId, $fiscalYearId) {
         'status'         => $targetStatus,
         'doc_id'         => $docId,
         'msg'            => $targetStatus === 'confirmed'
-            ? 'فاکتور خرید تأیید شد، سند حسابداری ثبت و موجودی کالا به‌روز شد.'
+            ? 'فاکتور خرید تأیید شد — سند حسابداری و رسید انبار ثبت گردید.'
             : 'پیش‌نویس فاکتور خرید ذخیره شد.',
     ];
 }
@@ -686,8 +484,7 @@ $basePath  = '../../';
 $pageTitle = 'فاکتور خرید';
 $csrfToken = csrf_token();
 
-// آمار اولیه
-$statsInit = ['count' => 0, 'total_sum' => '0', 'paid_sum' => '0', 'remain' => '0'];
+$statsInit = ['count'=>0,'total_sum'=>'0','paid_sum'=>'0','remain'=>'0'];
 try {
     $s = $pdo->query(
         "SELECT COUNT(*) cnt, COALESCE(SUM(total_amount),0) ts, COALESCE(SUM(paid_amount),0) ps
@@ -697,173 +494,151 @@ try {
         'count'     => (int)$s['cnt'],
         'total_sum' => number_format((int)$s['ts']),
         'paid_sum'  => number_format((int)$s['ps']),
-        'remain'    => number_format(max(0, (int)$s['ts'] - (int)$s['ps'])),
+        'remain'    => number_format(max(0,(int)$s['ts']-(int)$s['ps'])),
     ];
 } catch (Throwable $e) {}
 
-$extraCss = '<link rel="stylesheet" href="' . $basePath . 'assets/css/fin_module.css">';
+$extraCss = '<link rel="stylesheet" href="'.$basePath.'assets/css/fin_module.css">';
 require_once __DIR__ . '/../../templates/header.php';
 ?>
 <style>
-/* ===== اختصاصی صفحه فاکتور خرید ===== */
+/* ===== فاکتور خرید — تم بنفش ===== */
+.inv-page-icon{background:linear-gradient(135deg,#5b21b6,#7c3aed)!important;box-shadow:0 6px 16px rgba(124,58,237,.35)!important}
+.inv-form-hdr{background:linear-gradient(135deg,#5b21b6,#7c3aed)!important}
+.inv-sec-title::before{background:#7c3aed!important}
+.inv-inp:focus{border-color:#7c3aed!important;background:#faf5ff!important}
+.inv-add-btn:hover{border-color:#7c3aed!important;color:#7c3aed!important;background:#faf5ff!important}
+.inv-summary-box{background:linear-gradient(135deg,#faf5ff,#f3e8ff)!important;border-color:#e9d5ff!important}
+.inv-sum-total .val{color:#7c3aed!important}
 .inv-page-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px}
-.inv-page-icon{width:48px;height:48px;border-radius:14px;background:linear-gradient(135deg,#065f46,#059669);display:flex;align-items:center;justify-content:center;font-size:1.4rem;color:#fff;box-shadow:0 6px 16px rgba(5,150,105,.35)}
+.inv-page-icon{width:48px;height:48px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:1.4rem;color:#fff}
 .inv-page-title{display:flex;align-items:center;gap:12px}
 .inv-page-title h1{font-size:1.25rem;font-weight:900;color:#1e293b;margin:0}
-.inv-page-title p{font-size:0.78rem;color:#64748b;margin:3px 0 0}
+.inv-page-title p{font-size:.78rem;color:#64748b;margin:3px 0 0}
 .inv-form-wrap{background:#fff;border:1px solid #e5e7eb;border-radius:18px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.06)}
-.inv-form-hdr{background:linear-gradient(135deg,#065f46,#059669);padding:18px 26px;display:flex;align-items:center;justify-content:space-between;color:#fff}
+.inv-form-hdr{padding:18px 26px;display:flex;align-items:center;justify-content:space-between;color:#fff}
 .inv-form-hdr-title{font-size:1.05rem;font-weight:900}
 .inv-form-hdr-num{font-size:.95rem;font-weight:700;direction:ltr;background:rgba(255,255,255,.18);padding:5px 14px;border-radius:8px}
 .inv-form-body{padding:26px}
 .inv-sec-title{font-size:.8rem;font-weight:900;color:#64748b;margin:0 0 12px;display:flex;align-items:center;gap:6px;text-transform:uppercase;letter-spacing:.5px}
-.inv-sec-title::before{content:'';display:inline-block;width:4px;height:15px;background:#059669;border-radius:2px}
 .inv-meta-grid{display:grid;grid-template-columns:2fr 1fr 1fr;gap:16px;margin-bottom:24px}
 .inv-items-section{border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;margin-bottom:22px}
-.inv-items-thead{background:#f0fdf4;display:grid;grid-template-columns:34px 1fr 60px 80px 130px 70px 70px 110px 38px;gap:0;padding:9px 12px;border-bottom:2px solid #d1fae5}
-.inv-items-thead span{font-size:.72rem;font-weight:800;color:#059669;white-space:nowrap}
+.inv-items-thead{background:#f8fafc;display:grid;grid-template-columns:34px 1fr 60px 80px 130px 70px 70px 110px 38px;gap:0;padding:9px 12px;border-bottom:2px solid #e2e8f0}
+.inv-items-thead span{font-size:.72rem;font-weight:800;color:#64748b;white-space:nowrap}
 .inv-item-row{display:grid;grid-template-columns:34px 1fr 60px 80px 130px 70px 70px 110px 38px;gap:0;padding:7px 12px;border-bottom:1px solid #f1f5f9;align-items:center}
 .inv-item-row:last-child{border-bottom:none}
-.inv-item-row:hover{background:#f0fdf4}
+.inv-item-row:hover{background:#fdf9ff}
 .row-num{font-size:.75rem;color:#94a3b8;font-weight:700;text-align:center}
 .inv-inp{width:100%;border:1.5px solid transparent;border-radius:6px;padding:5px 7px;font-family:Vazirmatn,Tahoma,sans-serif;font-size:.8rem;color:#1e293b;background:transparent;direction:rtl}
 .inv-inp.n{direction:ltr;text-align:right}
-.inv-inp:focus{outline:none;border-color:#059669;background:#f0fdf4}
 .inv-item-total{font-size:.8rem;font-weight:800;color:#1e293b;direction:ltr;text-align:right;padding:0 4px}
 .inv-row-del{width:28px;height:28px;border:none;background:#fff1f2;color:#e11d48;border-radius:6px;cursor:pointer;font-size:.85rem;display:flex;align-items:center;justify-content:center;margin:auto}
 .inv-row-del:hover{background:#fecdd3}
-.inv-add-btn{display:inline-flex;align-items:center;gap:6px;padding:8px 18px;border:2px dashed #a7f3d0;border-radius:8px;background:none;color:#059669;font-family:Vazirmatn,Tahoma,sans-serif;font-size:.8rem;font-weight:700;cursor:pointer;margin:10px 12px;transition:all .2s}
-.inv-add-btn:hover{border-color:#059669;background:#f0fdf4}
-.inv-summary-box{background:linear-gradient(135deg,#f0fdf4,#ecfdf5);border:1px solid #a7f3d0;border-radius:14px;padding:20px 24px;min-width:300px}
-.inv-sum-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;font-size:.85rem;color:#475569;border-bottom:1px dashed #d1fae5}
+.inv-add-btn{display:inline-flex;align-items:center;gap:6px;padding:8px 18px;border:2px dashed #cbd5e1;border-radius:8px;background:none;color:#64748b;font-family:Vazirmatn,Tahoma,sans-serif;font-size:.8rem;font-weight:700;cursor:pointer;margin:10px 12px;transition:all .2s}
+.inv-summary-box{border:1px solid;border-radius:14px;padding:20px 24px;min-width:300px}
+.inv-sum-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;font-size:.85rem;color:#475569;border-bottom:1px dashed #e2e8f0}
 .inv-sum-row:last-child{border-bottom:none}
 .inv-sum-row .lbl{font-weight:600}
 .inv-sum-row .val{font-weight:700;direction:ltr}
 .inv-sum-total{display:flex;justify-content:space-between;align-items:center;padding:10px 0 0;margin-top:4px}
 .inv-sum-total .lbl{font-size:.95rem;font-weight:900;color:#1e293b}
-.inv-sum-total .val{font-size:1.25rem;font-weight:900;color:#059669;direction:ltr}
+.inv-sum-total .val{font-size:1.25rem;font-weight:900;direction:ltr}
 .inv-bottom-row{display:flex;justify-content:space-between;align-items:flex-start;gap:22px;flex-wrap:wrap;margin-top:18px}
 .inv-notes-wrap{flex:1;min-width:240px}
 .ac-wrap{position:relative}
-.ac-dd{display:none;position:absolute;top:calc(100% + 4px);right:0;left:0;background:#fff;border:1.5px solid #a7f3d0;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.12);z-index:600;max-height:220px;overflow-y:auto}
+.ac-dd{display:none;position:absolute;top:calc(100% + 4px);right:0;left:0;background:#fff;border:1.5px solid #e9d5ff;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.12);z-index:600;max-height:220px;overflow-y:auto}
 .ac-dd.open{display:block}
 .ac-it{padding:9px 13px;font-size:.83rem;cursor:pointer;color:#1e293b}
-.ac-it:hover{background:#f0fdf4;color:#059669}
+.ac-it:hover{background:#faf5ff;color:#7c3aed}
 .ac-it.nr{color:#94a3b8;cursor:default}
-.ac-it.nr:hover{background:transparent;color:#94a3b8}
-/* بج‌های وضعیت */
-.inv-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:20px;font-size:.73rem;font-weight:700}
-.inv-badge.draft{background:#f1f5f9;color:#64748b;border:1px solid #cbd5e1}
-.inv-badge.confirmed{background:#dcfce7;color:#15803d;border:1px solid #86efac}
-.inv-badge.paid{background:#ecfdf5;color:#059669;border:1px solid #6ee7b7}
-.inv-badge.partial{background:#fffbeb;color:#d97706;border:1px solid #fde68a}
-.inv-badge.cancelled{background:#fef2f2;color:#dc2626;border:1px solid #fca5a5}
-/* اسپینر */
-.inv-spin{display:inline-block;width:26px;height:26px;border:3px solid #e2e8f0;border-top-color:#059669;border-radius:50%;animation:spin .7s linear infinite;margin-bottom:8px}
+.inv-badge{display:inline-flex;align-items:center;padding:3px 10px;border-radius:20px;font-size:.75rem;font-weight:700;white-space:nowrap}
+.inv-badge.draft{background:#f1f5f9;color:#64748b}
+.inv-badge.confirmed{background:#dcfce7;color:#15803d}
+.inv-badge.paid{background:#d1fae5;color:#065f46}
+.inv-badge.partial{background:#fef3c7;color:#92400e}
+.inv-badge.cancelled{background:#fee2e2;color:#b91c1c}
+.inv-loading{display:flex;justify-content:center;padding:40px}
+.inv-spin{width:36px;height:36px;border:3px solid #e2e8f0;border-top-color:#7c3aed;border-radius:50%;animation:spin .7s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
-.inv-loading{text-align:center;padding:38px;color:#94a3b8;font-size:.88rem}
-/* هشدار سند */
-.inv-doc-note{background:#f0fdf4;border:1px solid #a7f3d0;border-radius:10px;padding:12px 16px;font-size:.82rem;color:#166534;margin-bottom:18px;display:flex;align-items:flex-start;gap:8px}
-/* چاپ */
-@media print{.inv-no-print{display:none!important}.inv-form-wrap{box-shadow:none;border:none}.inv-form-hdr{background:#065f46!important;-webkit-print-color-adjust:exact}}
-/* ریسپانسیو */
-@media(max-width:900px){.inv-meta-grid{grid-template-columns:1fr 1fr}.inv-items-thead,.inv-item-row{grid-template-columns:28px 1fr 55px 120px 65px 65px 90px 32px}.inv-bottom-row{flex-direction:column}.inv-summary-box{width:100%}}
-@media(max-width:600px){.inv-items-thead{display:none}.inv-item-row{grid-template-columns:1fr 1fr;gap:6px;padding:10px}.inv-meta-grid{grid-template-columns:1fr}}
+.fin-empty{text-align:center;padding:60px 20px;color:#94a3b8}
+.fin-empty .empty-icon{font-size:3rem;margin-bottom:12px}
+.tax-note{display:none;margin:8px 0 12px;padding:8px 14px;background:#fef3c7;border:1px solid #fde68a;border-radius:8px;font-size:.8rem;color:#92400e;font-weight:600}
+@media print{.inv-no-print{display:none!important}}
 </style>
 
-<div class="main-content">
+<div class="fin-container">
 
-    <!-- هدر صفحه -->
+    <!-- هدر -->
     <div class="inv-page-header inv-no-print">
         <div class="inv-page-title">
             <div class="inv-page-icon">🛒</div>
             <div>
                 <h1>فاکتور خرید</h1>
-                <p>ثبت خرید از تأمین‌کننده با سند دوطرفه و به‌روزرسانی موجودی</p>
+                <p>ثبت و مدیریت فاکتورهای خرید از تأمین‌کنندگان</p>
             </div>
         </div>
-        <button class="fin-btn fin-btn-success" onclick="switchTab('new')">➕ فاکتور خرید جدید</button>
+        <button class="fin-btn fin-btn-primary" style="background:linear-gradient(135deg,#5b21b6,#7c3aed);border:none" onclick="switchTab('new');resetForm()">
+            + فاکتور خرید جدید
+        </button>
     </div>
 
     <!-- تب‌ها -->
     <div class="fin-tabs inv-no-print" id="mainTabs">
-        <button class="fin-tab active" data-tab="list" onclick="switchTab('list')">📋 لیست فاکتورهای خرید</button>
-        <button class="fin-tab" data-tab="new"  onclick="switchTab('new')">➕ فاکتور جدید</button>
+        <button class="fin-tab active" id="tab-list"  onclick="switchTab('list')">📋 لیست فاکتورها</button>
+        <button class="fin-tab"        id="tab-new"   onclick="switchTab('new');resetForm()">➕ فاکتور جدید</button>
     </div>
 
     <!-- ===== تب لیست ===== -->
-    <div id="tab-list">
-        <!-- کارت‌های آماری -->
+    <div id="pane-list">
+        <!-- آمار -->
         <div class="fin-stats-grid inv-no-print">
             <div class="fin-stat-card blue">
-                <div class="fin-stat-icon">📋</div>
-                <div><div class="fin-stat-label">تعداد کل</div>
-                    <div class="fin-stat-value" id="stat-count"><?= number_format($statsInit['count']) ?></div></div>
+                <div class="stat-label">تعداد فاکتور</div>
+                <div class="stat-value" id="stat-count"><?= number_format($statsInit['count']) ?></div>
+            </div>
+            <div class="fin-stat-card purple">
+                <div class="stat-label">جمع کل (ریال)</div>
+                <div class="stat-value" id="stat-total"><?= $statsInit['total_sum'] ?></div>
             </div>
             <div class="fin-stat-card green">
-                <div class="fin-stat-icon">🛒</div>
-                <div><div class="fin-stat-label">مجموع خرید</div>
-                    <div class="fin-stat-value" id="stat-total"><?= $statsInit['total_sum'] ?></div>
-                    <div class="fin-stat-unit">ریال</div></div>
-            </div>
-            <div class="fin-stat-card amber">
-                <div class="fin-stat-icon">✅</div>
-                <div><div class="fin-stat-label">پرداخت شده</div>
-                    <div class="fin-stat-value" id="stat-paid"><?= $statsInit['paid_sum'] ?></div>
-                    <div class="fin-stat-unit">ریال</div></div>
+                <div class="stat-label">پرداخت شده (ریال)</div>
+                <div class="stat-value" id="stat-paid"><?= $statsInit['paid_sum'] ?></div>
             </div>
             <div class="fin-stat-card rose">
-                <div class="fin-stat-icon">⏳</div>
-                <div><div class="fin-stat-label">مانده بدهی</div>
-                    <div class="fin-stat-value" id="stat-remain"><?= $statsInit['remain'] ?></div>
-                    <div class="fin-stat-unit">ریال</div></div>
+                <div class="stat-label">مانده (ریال)</div>
+                <div class="stat-value" id="stat-remain"><?= $statsInit['remain'] ?></div>
             </div>
         </div>
 
         <!-- فیلتر -->
-        <div class="fin-filter-bar inv-no-print">
-            <div class="fin-filter-group">
-                <label>از تاریخ</label>
-                <input type="date" class="fin-input" id="f-from">
-            </div>
-            <div class="fin-filter-group">
-                <label>تا تاریخ</label>
-                <input type="date" class="fin-input" id="f-to">
-            </div>
-            <div class="fin-filter-group">
-                <label>وضعیت</label>
-                <select class="fin-select" id="f-status">
-                    <option value="">همه</option>
-                    <option value="draft">پیش‌نویس</option>
-                    <option value="confirmed">تأیید شده</option>
-                    <option value="paid">پرداخت کامل</option>
-                    <option value="partial">پرداخت ناقص</option>
-                    <option value="cancelled">لغو شده</option>
-                </select>
-            </div>
-            <div style="display:flex;align-items:flex-end;gap:8px">
-                <button class="fin-btn fin-btn-success" onclick="loadList(1)">🔍 اعمال</button>
-                <button class="fin-btn fin-btn-outline" onclick="resetFilter()">پاک</button>
-            </div>
+        <div class="fin-filter-bar inv-no-print" style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:18px;background:#fff;padding:14px 18px;border-radius:14px;border:1px solid #e2e8f0">
+            <input type="date" class="fin-input" id="f-from" placeholder="از تاریخ" style="max-width:160px">
+            <input type="date" class="fin-input" id="f-to"   placeholder="تا تاریخ" style="max-width:160px">
+            <select class="fin-input" id="f-status" style="max-width:160px">
+                <option value="">همه وضعیت‌ها</option>
+                <option value="draft">پیش‌نویس</option>
+                <option value="confirmed">تأیید شده</option>
+                <option value="paid">پرداخت کامل</option>
+                <option value="partial">پرداخت ناقص</option>
+                <option value="cancelled">لغو شده</option>
+            </select>
+            <button class="fin-btn fin-btn-primary" style="background:linear-gradient(135deg,#5b21b6,#7c3aed);border:none" onclick="loadList(1)">🔍 جستجو</button>
+            <button class="fin-btn fin-btn-outline" onclick="resetFilter()">پاک‌کردن</button>
         </div>
 
-        <!-- جدول -->
-        <div class="fin-panel">
-            <div id="listContainer">
-                <div class="inv-loading"><div class="inv-spin"></div><div>در حال بارگذاری...</div></div>
-            </div>
-            <div class="fin-pagination inv-no-print" id="pagination" style="display:none">
-                <span id="pag-info"></span>
-                <div style="display:flex;gap:6px">
-                    <button class="fin-btn fin-btn-outline fin-btn-sm" id="btn-prev" onclick="changePage(-1)">‹ قبلی</button>
-                    <button class="fin-btn fin-btn-outline fin-btn-sm" id="btn-next" onclick="changePage(1)">بعدی ›</button>
-                </div>
+        <div id="listContainer"><div class="inv-loading"><div class="inv-spin"></div></div></div>
+
+        <div class="inv-no-print" id="pagination" style="display:none;display:flex;align-items:center;justify-content:space-between;padding:14px 0;flex-wrap:wrap;gap:10px">
+            <span id="pag-info" style="font-size:.82rem;color:#64748b"></span>
+            <div style="display:flex;gap:8px">
+                <button class="fin-btn fin-btn-outline fin-btn-sm" id="btn-prev" onclick="changePage(-1)">◀ قبلی</button>
+                <button class="fin-btn fin-btn-outline fin-btn-sm" id="btn-next" onclick="changePage(1)">بعدی ▶</button>
             </div>
         </div>
     </div>
 
     <!-- ===== تب فرم ===== -->
-    <div id="tab-new" style="display:none">
+    <div id="pane-new" style="display:none">
         <div class="inv-form-wrap">
             <div class="inv-form-hdr">
                 <div class="inv-form-hdr-title" id="formTitle">🛒 فاکتور خرید جدید</div>
@@ -871,81 +646,82 @@ require_once __DIR__ . '/../../templates/header.php';
             </div>
             <div class="inv-form-body">
 
-                <!-- توضیح سند حسابداری -->
-                <div class="inv-doc-note">
-                    <span>📊</span>
-                    <div>
-                        <strong>سند حسابداری خرید:</strong>
-                        بدهکار: موجودی کالا (۱۲۰) + مالیات خرید + هزینه حمل (۹۰)
-                        &nbsp;|&nbsp;
-                        بستانکار: حساب پرداختنی / تأمین‌کننده (۸)
-                        — پس از تأیید، موجودی کالا نیز به‌روز می‌شود.
+                <!-- نوع فاکتور -->
+                <div style="margin-bottom:20px">
+                    <div class="inv-sec-title">نوع فاکتور</div>
+                    <input type="hidden" id="invTypeHidden" value="official">
+                    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+                        <label id="lblOfficial" style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 18px;border-radius:10px;border:2px solid #7c3aed;background:#faf5ff;font-weight:700;color:#7c3aed;transition:all .2s">
+                            <input type="radio" name="invTypeRadio" value="official" checked onchange="onInvTypeChange(this.value)" style="accent-color:#7c3aed;width:16px;height:16px">
+                            <span>رسمی</span>
+                        </label>
+                        <label id="lblAdjustment" style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 18px;border-radius:10px;border:2px solid #e2e8f0;background:#f8fafc;color:#64748b;transition:all .2s">
+                            <input type="radio" name="invTypeRadio" value="adjustment" onchange="onInvTypeChange(this.value)" style="accent-color:#7c3aed;width:16px;height:16px">
+                            <span>تنظیمی</span>
+                        </label>
+                        <label id="lblNoTax" style="display:flex;align-items:center;gap:7px;cursor:pointer;padding:10px 16px;border-radius:10px;border:2px solid #e2e8f0;background:#f8fafc;color:#64748b;transition:all .2s">
+                            <input type="checkbox" id="chkNoTax" onchange="onNoTaxChange(this.checked)" style="accent-color:#7c3aed;width:16px;height:16px">
+                            <span>بدون مالیات</span>
+                        </label>
                     </div>
+                    <div class="tax-note" id="taxNote">⚠️ مالیات برای این فاکتور اعمال نمی‌شود.</div>
                 </div>
 
-                <!-- اطلاعات پایه -->
-                <div class="inv-sec-title">اطلاعات فاکتور خرید</div>
+                <!-- متادیتا -->
                 <div class="inv-meta-grid">
-                    <div class="fin-form-group">
-                        <label>تأمین‌کننده / طرف حساب <span style="color:#e11d48">*</span></label>
+                    <div>
+                        <div class="inv-sec-title">تأمین‌کننده</div>
                         <div class="ac-wrap">
-                            <input type="text" class="fin-input" id="personSearch"
-                                placeholder="نام یا شرکت تأمین‌کننده..."
-                                autocomplete="off" oninput="onPersonSearch(this.value)">
+                            <input type="text" class="fin-input" id="personSearch" placeholder="جستجوی نام تأمین‌کننده..." autocomplete="off" oninput="onPersonSearch(this.value)">
                             <input type="hidden" id="personId">
                             <div class="ac-dd" id="personDd"></div>
                         </div>
                     </div>
-                    <div class="fin-form-group">
-                        <label>تاریخ فاکتور <span style="color:#e11d48">*</span></label>
+                    <div>
+                        <div class="inv-sec-title">تاریخ فاکتور</div>
                         <input type="date" class="fin-input" id="invDate">
                     </div>
-                    <div class="fin-form-group">
-                        <label>تاریخ سررسید پرداخت</label>
+                    <div>
+                        <div class="inv-sec-title">تاریخ سررسید</div>
                         <input type="date" class="fin-input" id="dueDate">
                     </div>
                 </div>
 
                 <!-- ردیف‌های کالا -->
-                <div class="inv-sec-title">ردیف‌های کالا / خدمات خریداری شده</div>
+                <div class="inv-sec-title">اقلام فاکتور</div>
                 <div class="inv-items-section">
                     <div class="inv-items-thead">
                         <span>#</span>
                         <span>شرح کالا / خدمت</span>
                         <span>واحد</span>
                         <span>تعداد</span>
-                        <span>قیمت خرید (ریال)</span>
-                        <span>تخفیف٪</span>
-                        <span>مالیات٪</span>
-                        <span>مبلغ (ریال)</span>
+                        <span>قیمت واحد</span>
+                        <span>تخفیف %</span>
+                        <span class="tax-col">مالیات %</span>
+                        <span>مبلغ ردیف</span>
                         <span></span>
                     </div>
                     <div id="invItems"></div>
-                    <button class="inv-add-btn" onclick="addRow()">➕ افزودن ردیف</button>
+                    <button class="inv-add-btn" onclick="addRow()">+ افزودن ردیف</button>
                 </div>
 
-                <!-- خلاصه + توضیحات -->
+                <!-- جمع‌بندی و توضیحات -->
                 <div class="inv-bottom-row">
                     <div class="inv-notes-wrap">
                         <div class="inv-sec-title">توضیحات</div>
-                        <textarea class="fin-textarea" id="invNotes" rows="4"
-                            placeholder="شماره فاکتور تأمین‌کننده، یادداشت..."></textarea>
-                        <div class="fin-form-group" style="margin-top:14px">
-                            <label>هزینه حمل (ریال)</label>
-                            <input type="text" class="fin-input" id="invShipping" value="0"
-                                oninput="formatNum(this);recalcAll()" placeholder="۰">
+                        <textarea class="fin-input" id="invNotes" rows="4" placeholder="توضیحات اختیاری..."></textarea>
+                        <div style="margin-top:14px">
+                            <div class="inv-sec-title">هزینه حمل (ریال)</div>
+                            <input type="text" class="fin-input" id="invShipping" value="۰" oninput="formatNum(this);recalcAll()" style="max-width:200px">
                         </div>
                     </div>
                     <div class="inv-summary-box">
-                        <div class="inv-sum-row"><span class="lbl">جمع کل اقلام</span><span class="val" id="s-sub">۰ ریال</span></div>
-                        <div class="inv-sum-row"><span class="lbl">مجموع تخفیف خرید</span><span class="val" id="s-disc" style="color:#059669">— ۰ ریال</span></div>
-                        <div class="inv-sum-row"><span class="lbl">مالیات بر خرید</span><span class="val" id="s-tax">+ ۰ ریال</span></div>
-                        <div class="inv-sum-row"><span class="lbl">هزینه حمل</span><span class="val" id="s-ship">+ ۰ ریال</span></div>
-                        <div style="border-top:2px solid #059669;margin:10px 0 4px"></div>
-                        <div class="inv-sum-total">
-                            <span class="lbl">مبلغ قابل پرداخت</span>
-                            <span class="val" id="s-total">۰ ریال</span>
-                        </div>
+                        <div class="inv-sum-row"><span class="lbl">جمع اقلام</span><span class="val" id="s-sub">۰ ریال</span></div>
+                        <div class="inv-sum-row"><span class="lbl">تخفیف</span><span class="val" id="s-disc">— ۰ ریال</span></div>
+                        <div class="inv-sum-row tax-col"><span class="lbl">مالیات</span><span class="val" id="s-tax">+ ۰ ریال</span></div>
+                        <div class="inv-sum-row"><span class="lbl">حمل</span><span class="val" id="s-ship">+ ۰ ریال</span></div>
+                        <div style="border-top:2px solid #7c3aed;margin:8px 0 4px"></div>
+                        <div class="inv-sum-total"><span class="lbl">مبلغ نهایی</span><span class="val" id="s-total">۰ ریال</span></div>
                     </div>
                 </div>
 
@@ -957,9 +733,8 @@ require_once __DIR__ . '/../../templates/header.php';
                         💾 ذخیره پیش‌نویس
                     </button>
                     <button class="fin-btn fin-btn-success" style="padding:10px 22px;font-size:.95rem" onclick="doSave('confirm')">
-                        ✅ تأیید + ثبت سند + به‌روز موجودی
+                        ✅ تأیید + ثبت سند
                     </button>
-                    <button class="fin-btn fin-btn-outline" onclick="printInvoice()">🖨️ چاپ</button>
                     <button class="fin-btn fin-btn-outline" style="margin-right:auto" onclick="resetForm();switchTab('list')">❌ انصراف</button>
                 </div>
 
@@ -967,50 +742,50 @@ require_once __DIR__ . '/../../templates/header.php';
         </div>
     </div>
 
-</div><!-- /main-content -->
-
-<!-- دراور مشاهده فاکتور -->
-<div class="fin-drawer-overlay" id="viewOverlay" onclick="closeView()"></div>
-<div class="fin-drawer" id="viewDrawer" style="width:640px;max-width:98vw">
-    <div class="fin-drawer-header">
-        <span id="viewTitle">مشاهده فاکتور خرید</span>
-        <button class="fin-drawer-close" onclick="closeView()">×</button>
-    </div>
-    <div class="fin-drawer-body" id="viewBody">
-        <div class="inv-loading"><div class="inv-spin"></div></div>
-    </div>
-</div>
+</div><!-- /fin-container -->
 
 <script>
-/* ============================================================
-   JS فاکتور خرید
-   ============================================================ */
-var curPage = 1, totPages = 1, rowCnt = 0, editMode = false;
-var personTimer = null, stuffTimers = {};
+var curPage=1, totPages=1, rowCnt=0, editMode=false;
+var personTimer=null, stuffTimers={};
 
-function numFa(n){ return Math.round(parseFloat(n)||0).toLocaleString('fa-IR'); }
-function numEn(s){ return String(s||'').replace(/[۰-۹]/g,d=>d.charCodeAt(0)-1776).replace(/[٠-٩]/g,d=>d.charCodeAt(0)-1632).replace(/,/g,''); }
-function rawNum(el){ return parseInt(numEn(el.value).replace(/\D/g,'')||'0',10)||0; }
-function formatNum(el){ var v=parseInt(numEn(el.value).replace(/\D/g,'')||'0',10)||0; el.value=numFa(v); }
+function numFa(n){
+    return String(n||0).replace(/\B(?=(\d{3})+(?!\d))/g,',')
+        .replace(/0/g,'۰').replace(/1/g,'۱').replace(/2/g,'۲').replace(/3/g,'۳')
+        .replace(/4/g,'۴').replace(/5/g,'۵').replace(/6/g,'۶').replace(/7/g,'۷')
+        .replace(/8/g,'۸').replace(/9/g,'۹');
+}
+function numEn(s){
+    return String(s||'').replace(/[۰-۹]/g,function(c){return c.charCodeAt(0)-1776;});
+}
+function rawNum(el){
+    return parseInt(numEn((el.value||'').replace(/,/g,'')).replace(/[^\d]/g,''))||0;
+}
+function formatNum(el){
+    var v=rawNum(el);
+    el.value = v>0 ? numFa(v) : '';
+}
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+function escJ(s){return String(s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'\\"');}
 
 function switchTab(t){
-    document.getElementById('tab-list').style.display=t==='list'?'':'none';
-    document.getElementById('tab-new').style.display=t==='new'?'':'none';
-    document.querySelectorAll('.fin-tab').forEach(function(el){el.classList.toggle('active',el.dataset.tab===t);});
+    ['list','new'].forEach(function(id){
+        document.getElementById('pane-'+id).style.display = id===t?'':'none';
+        document.getElementById('tab-'+id).classList.toggle('active', id===t);
+    });
     if(t==='list') loadList(curPage);
 }
 
 // ============================================================
 // لیست
 // ============================================================
-function loadList(pg){
-    curPage=pg;
-    document.getElementById('listContainer').innerHTML='<div class="inv-loading"><div class="inv-spin"></div><div>در حال بارگذاری...</div></div>';
+function loadList(page){
+    curPage=page;
+    document.getElementById('listContainer').innerHTML='<div class="inv-loading"><div class="inv-spin"></div></div>';
     var fd=new FormData();
-    fd.append('action','list'); fd.append('page',pg);
-    fd.append('date_from',document.getElementById('f-from').value||'');
-    fd.append('date_to',  document.getElementById('f-to').value||'');
-    fd.append('status',   document.getElementById('f-status').value||'');
+    fd.append('action','list'); fd.append('page',page);
+    fd.append('date_from', document.getElementById('f-from').value||'');
+    fd.append('date_to',   document.getElementById('f-to').value||'');
+    fd.append('status',    document.getElementById('f-status').value||'');
     post(fd,function(res){
         if(!res.ok){document.getElementById('listContainer').innerHTML='<div class="fin-alert danger">'+esc(res.msg)+'</div>';return;}
         document.getElementById('stat-count').textContent=numFa(res.stats.count);
@@ -1030,26 +805,27 @@ function renderTable(rows){
         return;
     }
     var h='<div style="overflow-x:auto"><table class="fin-table"><thead><tr>'
-        +'<th>شماره</th><th>تاریخ</th><th>تأمین‌کننده</th>'
+        +'<th>شماره</th><th>نوع</th><th>تاریخ</th><th>تأمین‌کننده</th>'
         +'<th>مبلغ کل (ریال)</th><th>پرداخت شده</th><th>مانده</th>'
-        +'<th>وضعیت</th><th>سند</th><th>عملیات</th></tr></thead><tbody>';
+        +'<th>وضعیت</th><th>عملیات</th></tr></thead><tbody>';
     rows.forEach(function(r){
         var badge='<span class="inv-badge '+r.status_class+'">'+r.status_label+'</span>';
-        var docBadge=r.fin_doc_id
-            ?'<span style="background:#dcfce7;color:#166534;padding:2px 8px;border-radius:12px;font-size:.7rem;font-weight:700">#'+r.fin_doc_id+'</span>'
-            :'<span style="color:#94a3b8;font-size:.75rem">—</span>';
+        var typeBadge = r.invoice_type === 'adjustment'
+            ? '<span style="font-size:.7rem;background:#f3e8ff;color:#7c3aed;padding:2px 7px;border-radius:8px;white-space:nowrap">تنظیمی</span>'
+            : '<span style="font-size:.7rem;background:#faf5ff;color:#5b21b6;padding:2px 7px;border-radius:8px;white-space:nowrap">رسمی</span>';
         h+='<tr>'
-          +'<td><strong style="color:#059669;direction:ltr;display:inline-block">'+esc(r.invoice_number)+'</strong></td>'
+          +'<td><strong style="color:#7c3aed;direction:ltr;display:inline-block">'+esc(r.invoice_number)+'</strong></td>'
+          +'<td>'+typeBadge+'</td>'
           +'<td style="direction:ltr">'+esc(r.date_jalali)+'</td>'
           +'<td>'+esc(r.person_name||'—')+'</td>'
           +'<td style="direction:ltr;font-weight:700">'+r.total_fmt+'</td>'
           +'<td style="direction:ltr;color:#059669">'+r.paid_fmt+'</td>'
           +'<td style="direction:ltr;color:#e11d48">'+r.remain_fmt+'</td>'
           +'<td>'+badge+'</td>'
-          +'<td>'+docBadge+'</td>'
           +'<td style="white-space:nowrap">'
           +'<button class="fin-btn fin-btn-outline fin-btn-sm" onclick="viewInv('+r.id+')">👁</button> '
-          +(r.status==='draft'?'<button class="fin-btn fin-btn-success fin-btn-sm" onclick="editInv('+r.id+')">✏️</button> ':'')
+          +(r.status!=='draft'?'<a class="fin-btn fin-btn-outline fin-btn-sm" href="fin_invoice_pdf.php?id='+r.id+'&type=buy" target="_blank" title="چاپ PDF">🖨️</a> ':'')
+          +(r.status==='draft'?'<button class="fin-btn fin-btn-primary fin-btn-sm" style="background:linear-gradient(135deg,#5b21b6,#7c3aed);border:none" onclick="editInv('+r.id+')">✏️</button> ':'')
           +'<button class="fin-btn fin-btn-danger fin-btn-sm" onclick="delInv('+r.id+',\''+esc(r.invoice_number)+'\')">🗑</button>'
           +'</td></tr>';
     });
@@ -1074,64 +850,69 @@ function resetFilter(){
 // مشاهده
 // ============================================================
 function viewInv(id){
-    document.getElementById('viewTitle').textContent='در حال بارگذاری...';
-    document.getElementById('viewBody').innerHTML='<div class="inv-loading"><div class="inv-spin"></div></div>';
-    document.getElementById('viewOverlay').classList.add('open');
-    document.getElementById('viewDrawer').classList.add('open');
     var fd=new FormData(); fd.append('action','get_one'); fd.append('id',id);
     post(fd,function(res){
-        if(!res.ok){document.getElementById('viewBody').innerHTML='<div class="fin-alert danger">'+esc(res.msg)+'</div>';return;}
+        if(!res.ok){showToast(res.msg,'danger');return;}
         var inv=res.invoice;
-        document.getElementById('viewTitle').textContent='فاکتور خرید '+inv.invoice_number;
-        var statusLabels={draft:'پیش‌نویس',confirmed:'تأیید شده',paid:'پرداخت کامل',partial:'پرداخت ناقص',cancelled:'لغو شده'};
-        var sLabel=statusLabels[inv.status]||inv.status;
-        var sClass=inv.status||'draft';
+        var sLabels={draft:'پیش‌نویس',confirmed:'تأیید شده',paid:'پرداخت کامل',partial:'پرداخت ناقص',cancelled:'لغو شده'};
+        var sLabel=sLabels[inv.status]||inv.status;
         var itemsHtml='';
         (inv.items||[]).forEach(function(it,i){
             itemsHtml+='<tr><td>'+(i+1)+'</td><td>'+esc(it.description)+'</td>'
                 +'<td style="direction:ltr">'+numFa(it.qty)+'</td>'
                 +'<td style="direction:ltr">'+numFa(it.unit_price)+'</td>'
-                +'<td style="direction:ltr;color:#059669">'+numFa(it.discount_amt)+'</td>'
+                +'<td style="direction:ltr;color:#e11d48">'+numFa(it.discount_amt)+'</td>'
                 +'<td style="direction:ltr">'+numFa(it.tax_amt)+'</td>'
                 +'<td style="direction:ltr;font-weight:800">'+numFa(it.total)+'</td></tr>';
         });
-        document.getElementById('viewBody').innerHTML=`
-<div style="margin-bottom:18px">
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-    <div><div style="font-size:.75rem;color:#64748b">تأمین‌کننده</div>
+        var html=`
+<div style="background:#faf5ff;border:1px solid #e9d5ff;border-radius:14px;padding:18px;margin-bottom:18px">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+    <div><span style="font-size:.75rem;color:#64748b">تأمین‌کننده</span>
          <div style="font-weight:800;font-size:1rem">${esc(inv.person_name||'—')}</div></div>
-    <span class="inv-badge ${sClass}">${sLabel}</span>
+    <span class="inv-badge ${inv.status}">${sLabel}</span>
   </div>
-  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;background:#f0fdf4;padding:12px;border-radius:10px;margin-bottom:14px">
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
     <div><span style="color:#64748b;font-size:.73rem">شماره فاکتور</span><br><strong style="direction:ltr;display:inline-block">${esc(inv.invoice_number)}</strong></div>
     <div><span style="color:#64748b;font-size:.73rem">تاریخ</span><br><strong style="direction:ltr;display:inline-block">${esc(inv.date_jalali)}</strong></div>
-    ${inv.fin_doc_id?'<div><span style="color:#64748b;font-size:.73rem">شماره سند</span><br><strong style="color:#059669">#'+inv.fin_doc_id+'</strong></div>':'<div></div>'}
+    ${inv.fin_doc_id?'<div><span style="color:#64748b;font-size:.73rem">شماره سند</span><br><strong style="color:#7c3aed">#'+inv.fin_doc_id+'</strong></div>':'<div></div>'}
   </div>
 </div>
 <div style="overflow-x:auto;margin-bottom:16px">
   <table class="fin-table"><thead><tr>
-    <th>#</th><th>شرح</th><th>تعداد</th><th>قیمت خرید</th><th>تخفیف</th><th>مالیات</th><th>مبلغ</th>
+    <th>#</th><th>شرح</th><th>تعداد</th><th>قیمت واحد</th><th>تخفیف</th><th>مالیات</th><th>مبلغ</th>
   </tr></thead><tbody>${itemsHtml}</tbody></table>
 </div>
 <div class="inv-summary-box" style="max-width:300px;margin-right:auto">
   <div class="inv-sum-row"><span class="lbl">جمع اقلام</span><span class="val">${numFa(inv.subtotal)} ریال</span></div>
-  <div class="inv-sum-row"><span class="lbl">تخفیف خرید</span><span class="val" style="color:#059669">— ${numFa(inv.discount)} ریال</span></div>
-  <div class="inv-sum-row"><span class="lbl">مالیات خرید</span><span class="val">+ ${numFa(inv.tax)} ریال</span></div>
+  <div class="inv-sum-row"><span class="lbl">تخفیف</span><span class="val" style="color:#e11d48">— ${numFa(inv.discount)} ریال</span></div>
+  <div class="inv-sum-row"><span class="lbl">مالیات</span><span class="val">+ ${numFa(inv.tax)} ریال</span></div>
   <div class="inv-sum-row"><span class="lbl">حمل</span><span class="val">+ ${numFa(inv.shipping||0)} ریال</span></div>
-  <div style="border-top:2px solid #059669;margin:8px 0 4px"></div>
+  <div style="border-top:2px solid #7c3aed;margin:8px 0 4px"></div>
   <div class="inv-sum-total"><span class="lbl">مبلغ نهایی</span><span class="val">${numFa(inv.total_amount)} ریال</span></div>
-  <div style="margin-top:10px;padding-top:10px;border-top:1px dashed #d1fae5">
+  <div style="margin-top:10px;padding-top:10px;border-top:1px dashed #e2e8f0">
     <div class="inv-sum-row"><span class="lbl">پرداخت شده</span><span class="val" style="color:#059669">${numFa(inv.paid_amount)} ریال</span></div>
-    <div class="inv-sum-row"><span class="lbl">مانده بدهی</span><span class="val" style="color:#e11d48">${numFa(Math.max(0,inv.total_amount-inv.paid_amount))} ریال</span></div>
+    <div class="inv-sum-row"><span class="lbl">مانده</span><span class="val" style="color:#e11d48">${numFa(Math.max(0,inv.total_amount-inv.paid_amount))} ریال</span></div>
   </div>
 </div>
-${inv.notes?'<div style="margin-top:14px;padding:10px 14px;background:#f0fdf4;border-radius:8px;font-size:.83rem;color:#166534"><strong>توضیحات: </strong>'+esc(inv.notes)+'</div>':''}
+${inv.notes?'<div style="margin-top:14px;padding:10px 14px;background:#fffbeb;border-radius:8px;font-size:.83rem;color:#92400e"><strong>توضیحات: </strong>'+esc(inv.notes)+'</div>':''}
         `;
+        // نمایش در drawer
+        var d=document.createElement('div');
+        d.style.cssText='position:fixed;inset:0;z-index:800;display:flex;align-items:flex-start;justify-content:center;padding:60px 20px;overflow-y:auto;background:rgba(0,0,0,.4)';
+        d.onclick=function(e){if(e.target===d)d.remove();};
+        var box=document.createElement('div');
+        box.style.cssText='background:#fff;border-radius:18px;width:100%;max-width:780px;padding:26px;box-shadow:0 20px 60px rgba(0,0,0,.2);direction:rtl;font-family:Vazirmatn,Tahoma,sans-serif';
+        box.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">'
+            +'<h2 style="margin:0;font-size:1.1rem;font-weight:900">فاکتور خرید '+esc(inv.invoice_number)+'</h2>'
+            +'<button onclick="this.closest(\'div[style*=fixed]\').remove()" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#64748b">✕</button>'
+            +'</div>'+html;
+        if(inv.status!=='draft'){
+            box.innerHTML+='<div style="margin-top:16px"><a class="fin-btn fin-btn-outline" href="fin_invoice_pdf.php?id='+id+'&type=buy" target="_blank">🖨️ چاپ PDF</a></div>';
+        }
+        d.appendChild(box);
+        document.body.appendChild(d);
     });
-}
-function closeView(){
-    document.getElementById('viewOverlay').classList.remove('open');
-    document.getElementById('viewDrawer').classList.remove('open');
 }
 
 // ============================================================
@@ -1153,9 +934,15 @@ function editInv(id){
         document.getElementById('invShipping').value=numFa(inv.shipping||0);
         document.getElementById('formTitle').textContent='✏️ ویرایش فاکتور خرید';
         document.getElementById('formNum').textContent='شماره: '+inv.invoice_number;
-        (inv.items||[]).forEach(function(it){
-            addRow(it.stuff_id,it.description,it.unit,it.qty,it.unit_price,it.discount_pct,it.tax_pct);
-        });
+        var itype=inv.invoice_type||'official';
+        document.getElementById('invTypeHidden').value=itype;
+        document.querySelectorAll('[name="invTypeRadio"]').forEach(function(r){r.checked=(r.value===itype);});
+        var allTaxZero = inv.items && inv.items.length && inv.items.every(function(it){return !parseFloat(it.tax_pct);});
+        var chk=document.getElementById('chkNoTax');
+        chk.checked=(itype==='adjustment')||allTaxZero;
+        chk.disabled=(itype==='adjustment');
+        onInvTypeChange(itype);
+        (inv.items||[]).forEach(function(it){addRow(it.stuff_id,it.description,it.unit,it.qty,it.unit_price,it.discount_pct,it.tax_pct);});
         recalcAll();
         switchTab('new');
     });
@@ -1165,7 +952,7 @@ function editInv(id){
 // حذف
 // ============================================================
 function delInv(id,num){
-    if(!confirm('آیا از حذف فاکتور خرید '+num+' اطمینان دارید؟')) return;
+    if(!confirm('آیا از حذف فاکتور '+num+' اطمینان دارید؟')) return;
     var fd=new FormData();
     fd.append('action','delete'); fd.append('id',id);
     fd.append('csrf_token',document.getElementById('csrfToken').value);
@@ -1187,6 +974,12 @@ function resetForm(){
     document.getElementById('invItems').innerHTML='';
     document.getElementById('formTitle').textContent='🛒 فاکتور خرید جدید';
     document.getElementById('formNum').textContent='شماره: خودکار';
+    document.getElementById('invTypeHidden').value='official';
+    document.querySelectorAll('[name="invTypeRadio"]').forEach(function(r){r.checked=(r.value==='official');});
+    onInvTypeChange('official');
+    document.getElementById('chkNoTax').checked=false;
+    document.getElementById('chkNoTax').disabled=false;
+    document.getElementById('taxNote').style.display='none';
     recalcAll();
     addRow();
 }
@@ -1196,25 +989,25 @@ function today(){
     return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 }
 
-// ---- افزودن ردیف ----
 function addRow(stuffId,desc,unit,qty,price,discP,taxP){
     rowCnt++;
     var idx=rowCnt;
-    var d=desc||'', u=unit||'', q=qty||1, p=price||0, dp=discP!==undefined?discP:0, tp=taxP!==undefined?taxP:9, sid=stuffId||'';
+    var noTaxNow = document.getElementById('chkNoTax').checked || document.getElementById('invTypeHidden').value==='adjustment';
+    var d=desc||'', u=unit||'', q=qty||1, p=price||0, dp=discP!==undefined?discP:0, tp=(taxP!==undefined?taxP:(noTaxNow?0:9)), sid=stuffId||'';
     var row=document.createElement('div');
     row.className='inv-item-row'; row.id='row-'+idx;
     row.innerHTML=
         '<span class="row-num">'+idx+'</span>'
         +'<div style="position:relative">'
-        +  '<input type="text" class="inv-inp" id="d-'+idx+'" placeholder="شرح کالا..." value="'+esc(d)+'" autocomplete="off" oninput="onStuffSearch('+idx+',this.value)">'
+        +  '<input type="text" class="inv-inp" id="d-'+idx+'" placeholder="شرح..." value="'+esc(d)+'" autocomplete="off" oninput="onStuffSearch('+idx+',this.value)">'
         +  '<input type="hidden" id="sid-'+idx+'" value="'+sid+'">'
         +  '<div class="ac-dd" id="sdd-'+idx+'"></div>'
         +'</div>'
         +'<input type="text" class="inv-inp" id="u-'+idx+'" value="'+esc(u)+'" placeholder="عدد">'
         +'<input type="number" class="inv-inp n" id="q-'+idx+'" value="'+q+'" min="0.001" step="any" oninput="recalcRow('+idx+')">'
-        +'<input type="text" class="inv-inp n" id="p-'+idx+'" value="'+(p>0?numFa(p):'')+'" placeholder="۰" oninput="formatNum(this);recalcRow('+idx+')">'
+        +'<input type="text" class="inv-inp n" id="p-'+idx+'" value="'+(p>0?numFa(p):'')+'\" placeholder="۰" oninput="formatNum(this);recalcRow('+idx+')">'
         +'<input type="number" class="inv-inp n" id="disc-'+idx+'" value="'+dp+'" min="0" max="100" step="0.01" oninput="recalcRow('+idx+')">'
-        +'<input type="number" class="inv-inp n" id="tax-'+idx+'" value="'+tp+'" min="0" max="100" step="0.01" oninput="recalcRow('+idx+')">'
+        +'<input type="number" class="inv-inp n tax-col" id="tax-'+idx+'" value="'+tp+'" min="0" max="100" step="0.01" oninput="recalcRow('+idx+')">'
         +'<div class="inv-item-total" id="tot-'+idx+'">۰</div>'
         +'<button class="inv-row-del" onclick="removeRow('+idx+')" title="حذف">✕</button>';
     document.getElementById('invItems').appendChild(row);
@@ -1222,21 +1015,15 @@ function addRow(stuffId,desc,unit,qty,price,discP,taxP){
     if(!desc) setTimeout(function(){var el=document.getElementById('d-'+idx);if(el)el.focus();},50);
 }
 
-function removeRow(idx){
-    var r=document.getElementById('row-'+idx);
-    if(r)r.remove();
-    recalcAll();
-}
+function removeRow(idx){var r=document.getElementById('row-'+idx);if(r)r.remove();recalcAll();}
 
 function recalcRow(idx){
-    var pEl=document.getElementById('p-'+idx),
-        qEl=document.getElementById('q-'+idx),
-        dEl=document.getElementById('disc-'+idx),
-        tEl=document.getElementById('tax-'+idx),
+    var pEl=document.getElementById('p-'+idx),qEl=document.getElementById('q-'+idx),
+        dEl=document.getElementById('disc-'+idx),tEl=document.getElementById('tax-'+idx),
         totEl=document.getElementById('tot-'+idx);
     if(!pEl)return;
-    var p=rawNum(pEl), q=parseFloat(qEl.value)||0, d=parseFloat(dEl.value)||0, t=parseFloat(tEl.value)||0;
-    var gross=Math.round(q*p), dAmt=Math.round(gross*d/100), after=gross-dAmt, tAmt=Math.round(after*t/100);
+    var p=rawNum(pEl),q=parseFloat(qEl.value)||0,d=parseFloat(dEl.value)||0,t=parseFloat(tEl.value)||0;
+    var gross=Math.round(q*p),dAmt=Math.round(gross*d/100),after=gross-dAmt,tAmt=Math.round(after*t/100);
     totEl.textContent=numFa(after+tAmt);
     recalcAll();
 }
@@ -1251,7 +1038,7 @@ function recalcAll(){
         if(!pEl)return;
         var p=rawNum(pEl),q=parseFloat(qEl.value)||0,d=parseFloat(dEl.value)||0,t=parseFloat(tEl.value)||0;
         var gross=Math.round(q*p),dAmt=Math.round(gross*d/100),after=gross-dAmt;
-        sub+=gross; disc+=dAmt; tax+=Math.round(after*t/100);
+        sub+=gross;disc+=dAmt;tax+=Math.round(after*t/100);
     });
     var ship=rawNum(document.getElementById('invShipping'));
     var total=sub-disc+tax+ship;
@@ -1260,6 +1047,45 @@ function recalcAll(){
     document.getElementById('s-tax').textContent='+ '+numFa(tax)+' ریال';
     document.getElementById('s-ship').textContent='+ '+numFa(ship)+' ریال';
     document.getElementById('s-total').textContent=numFa(total)+' ریال';
+}
+
+// ============================================================
+// نوع فاکتور / مالیات
+// ============================================================
+function onInvTypeChange(val){
+    document.getElementById('invTypeHidden').value=val;
+    var isAdj=(val==='adjustment');
+    document.getElementById('lblOfficial').style.cssText=!isAdj
+        ?'display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 18px;border-radius:10px;border:2px solid #7c3aed;background:#faf5ff;font-weight:700;color:#7c3aed;transition:all .2s'
+        :'display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 18px;border-radius:10px;border:2px solid #e2e8f0;background:#f8fafc;color:#64748b;transition:all .2s';
+    document.getElementById('lblAdjustment').style.cssText=isAdj
+        ?'display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 18px;border-radius:10px;border:2px solid #7c3aed;background:#faf5ff;font-weight:700;color:#7c3aed;transition:all .2s'
+        :'display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 18px;border-radius:10px;border:2px solid #e2e8f0;background:#f8fafc;color:#64748b;transition:all .2s';
+    var noTax=isAdj||document.getElementById('chkNoTax').checked;
+    applyTaxState(noTax);
+    var chk=document.getElementById('chkNoTax');
+    if(isAdj){chk.checked=true;chk.disabled=true;}
+    else{chk.disabled=false;}
+    recalcAll();
+}
+
+function onNoTaxChange(checked){
+    var isAdj=(document.getElementById('invTypeHidden').value==='adjustment');
+    applyTaxState(isAdj||checked);
+    document.getElementById('taxNote').style.display=(isAdj||checked)?'block':'none';
+    recalcAll();
+}
+
+function applyTaxState(noTax){
+    document.querySelectorAll('[id^="tax-"]').forEach(function(el){
+        if(noTax){el.value='0';el.style.opacity='.4';el.style.pointerEvents='none';}
+        else{if(el.value==='0')el.value='9';el.style.opacity='1';el.style.pointerEvents='';}
+    });
+    document.querySelectorAll('.tax-col').forEach(function(el){
+        el.style.opacity=noTax?'.4':'1';
+        el.style.pointerEvents=noTax?'none':'';
+    });
+    document.getElementById('taxNote').style.display=noTax?'block':'none';
 }
 
 // ============================================================
@@ -1274,7 +1100,7 @@ function onPersonSearch(q){
         var fd=new FormData(); fd.append('action','search_persons'); fd.append('q',q);
         post(fd,function(res){
             if(!res.ok||!res.results.length){
-                dd.innerHTML='<div class="ac-it nr">موردی یافت نشد. ابتدا در مدیریت اشخاص ثبت کنید.</div>';
+                dd.innerHTML='<div class="ac-it nr">موردی یافت نشد.</div>';
             } else {
                 dd.innerHTML=res.results.map(function(p){
                     return '<div class="ac-it" onclick="selPerson('+p.id+',\''+escJ(p.display_name)+'\')">'+esc(p.display_name)+'</div>';
@@ -1302,12 +1128,12 @@ function onStuffSearch(idx,q){
         var fd=new FormData(); fd.append('action','search_stuffs'); fd.append('q',q);
         post(fd,function(res){
             if(!res.ok||!res.results.length){
-                dd.innerHTML='<div class="ac-it nr">کالایی یافت نشد — شرح دستی وارد کنید.</div>';
+                dd.innerHTML='<div class="ac-it nr">کالایی یافت نشد.</div>';
             } else {
                 dd.innerHTML=res.results.map(function(c){
-                    return '<div class="ac-it" onclick="selStuff('+idx+','+c.id+',\''+escJ(c.name)+'\',\''+escJ(c.unit||'')+'\','+(parseInt(c.price)||0)+')">'
+                    return '<div class="ac-it" onclick="selStuff('+idx+','+c.id+',\''+escJ(c.name)+'\\',\''+escJ(c.unit||'')+'\','+(parseInt(c.price)||0)+')">'
                         +esc(c.name)+(c.unit?' <small style="color:#94a3b8">('+c.unit+')</small>':'')
-                        +' — <span style="color:#059669;direction:ltr;display:inline-block">'+numFa(c.price)+' ریال</span>'
+                        +' — <span style="color:#7c3aed;direction:ltr;display:inline-block">'+numFa(c.price)+' ریال</span>'
                         +'</div>';
                 }).join('');
             }
@@ -1319,15 +1145,13 @@ function selStuff(idx,sid,name,unit,price){
     document.getElementById('sid-'+idx).value=sid;
     document.getElementById('d-'+idx).value=name;
     document.getElementById('u-'+idx).value=unit||'';
-    var pEl=document.getElementById('p-'+idx);
-    pEl.value=numFa(price);
+    document.getElementById('p-'+idx).value=numFa(price);
     document.getElementById('sdd-'+idx).classList.remove('open');
     recalcRow(idx);
     var qEl=document.getElementById('q-'+idx);
     if(qEl){qEl.focus();qEl.select();}
 }
 
-// بستن dropdown با کلیک خارج
 document.addEventListener('click',function(e){
     if(!e.target.closest('.ac-wrap')&&!e.target.closest('.inv-item-row')){
         document.querySelectorAll('.ac-dd').forEach(function(d){d.classList.remove('open');});
@@ -1372,22 +1196,18 @@ function doSave(mode){
     fd.append('due_date',document.getElementById('dueDate').value||'');
     fd.append('notes',document.getElementById('invNotes').value||'');
     fd.append('shipping',numEn(document.getElementById('invShipping').value).replace(/\D/g,'')||'0');
+    fd.append('invoice_type',document.getElementById('invTypeHidden').value||'official');
     items.forEach(function(it,i){Object.keys(it).forEach(function(k){fd.append('items['+i+']['+k+']',it[k]);});});
 
-    var draftBtn=document.querySelector('[onclick="doSave(\'draft\')"]');
-    var confBtn=document.querySelector('[onclick="doSave(\'confirm\')"]');
-    var btn=mode==='draft'?draftBtn:confBtn;
+    var btn=mode==='draft'?document.querySelector('[onclick="doSave(\'draft\')"]'):document.querySelector('[onclick="doSave(\'confirm\')"]');
     if(btn){btn.disabled=true;btn.textContent='⏳ در حال ذخیره...';}
 
     post(fd,function(res){
-        if(draftBtn){draftBtn.disabled=false;draftBtn.textContent='💾 ذخیره پیش‌نویس';}
-        if(confBtn){confBtn.disabled=false;confBtn.textContent='✅ تأیید + ثبت سند + به‌روز موجودی';}
+        if(btn){btn.disabled=false;btn.textContent=mode==='draft'?'💾 ذخیره پیش‌نویس':'✅ تأیید + ثبت سند';}
         showToast(res.msg,res.ok?'success':'danger');
         if(res.ok){resetForm();switchTab('list');}
     });
 }
-
-function printInvoice(){ window.print(); }
 
 // ============================================================
 // AJAX
@@ -1399,7 +1219,7 @@ function post(fd,cb){
 }
 
 function showToast(msg,type){
-    var colors={success:'#059669',danger:'#e11d48',warning:'#d97706',info:'#2563eb'};
+    var colors={success:'#059669',danger:'#e11d48',warning:'#d97706',info:'#7c3aed'};
     var d=document.createElement('div');
     d.textContent=msg;
     d.style.cssText='position:fixed;top:20px;left:50%;transform:translateX(-50%);background:'+(colors[type]||colors.info)+';color:#fff;padding:11px 22px;border-radius:10px;font-family:Vazirmatn,Tahoma,sans-serif;font-weight:700;font-size:.88rem;z-index:9999;box-shadow:0 6px 20px rgba(0,0,0,.2)';
@@ -1407,12 +1227,6 @@ function showToast(msg,type){
     setTimeout(function(){d.remove();},3500);
 }
 
-function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
-function escJ(s){return String(s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'\\"');}
-
-// ============================================================
-// راه‌اندازی
-// ============================================================
 document.addEventListener('DOMContentLoaded',function(){
     document.getElementById('invDate').value=today();
     loadList(1);

@@ -1056,6 +1056,7 @@ function renderTable(rows){
           +'<td>'+badge+'</td>'
           +'<td style="white-space:nowrap">'
           +'<button class="fin-btn fin-btn-outline fin-btn-sm" onclick="viewInv('+r.id+')">👁</button> '
+          +(r.status!=='draft'?'<a class="fin-btn fin-btn-outline fin-btn-sm" href="fin_invoice_pdf.php?id='+r.id+'&type=sell" target="_blank" title="چاپ PDF">🖨️</a> ':'')
           +(r.status==='draft'?'<button class="fin-btn fin-btn-primary fin-btn-sm" onclick="editInv('+r.id+')">✏️</button> ':'')
           +'<button class="fin-btn fin-btn-danger fin-btn-sm" onclick="delInv('+r.id+',\''+esc(r.invoice_number)+'\')">🗑</button>'
           +'</td></tr>';
