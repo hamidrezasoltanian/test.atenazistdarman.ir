@@ -468,6 +468,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isAjax) {
             $cur = $st->fetch(PDO::FETCH_ASSOC);
             if (!$cur) { echo json_encode(['ok' => false, 'msg' => 'پیشفاکتور یافت نشد.']); exit; }
             if ($cur['status'] === 'converted') { echo json_encode(['ok' => false, 'msg' => 'پیشفاکتور تبدیل‌شده را نمی‌توان ویرایش کرد.']); exit; }
+
+            // بررسی موجودی انبار قبل از تأیید پیشفاکتور
+            if ($status === 'accepted') {
+                $itemsStmt = $pdo->prepare(
+                    "SELECT pi.stuff_id, pi.description, pi.qty,
+                            COALESCE(spl.total_inventory,0) AS available,
+                            COALESCE(s.name,'') AS stuff_name
+                     FROM fin_preinvoice_items pi
+                     LEFT JOIN stuffs s ON s.id = pi.stuff_id
+                     LEFT JOIN stuff_price_list spl ON spl.stuff_id = pi.stuff_id
+                     WHERE pi.quote_id = ? AND pi.stuff_id IS NOT NULL AND pi.stuff_id > 0"
+                );
+                $itemsStmt->execute([$id]);
+                $stockErrors = [];
+                foreach ($itemsStmt->fetchAll(PDO::FETCH_ASSOC) as $item) {
+                    if ((float)$item['qty'] > (float)$item['available']) {
+                        $stockErrors[] = '«' . $item['stuff_name'] . '» — نیاز: ' . $item['qty']
+                            . ' / موجودی: ' . $item['available'];
+                    }
+                }
+                if (!empty($stockErrors)) {
+                    echo json_encode([
+                        'ok'    => false,
+                        'msg'   => 'موجودی انبار کافی نیست:',
+                        'items' => $stockErrors,
+                    ]);
+                    exit;
+                }
+            }
+
             // notify = ارسال اعلان بدون تغییر وضعیت
             if ($status !== 'notify') {
                 $pdo->prepare("UPDATE fin_preinvoices SET status=?, updated_at=NOW() WHERE id=?")->execute([$status, $id]);
@@ -828,7 +858,10 @@ require_once __DIR__ . '/../../templates/header.php';
                 <div style="display:flex;gap:12px;margin-top:24px;flex-wrap:wrap">
                     <button class="pre-btn-amber" onclick="saveQuote('draft')" id="btnSave">💾 ذخیره پیش‌نویس</button>
                     <button class="pre-btn-sent" onclick="saveAndSend()" id="btnSend">📤 ارسال به مشتری</button>
-                    <button class="pre-btn-convert" onclick="convertQuote()" id="btnConvert" style="display:none">✅ تبدیل به فاکتور</button>
+                    <button onclick="acceptQuote()" id="btnAccept" style="display:none;background:#16a34a;color:#fff;border:none;padding:10px 20px;border-radius:10px;cursor:pointer;font-family:Vazirmatn,Tahoma,sans-serif;font-size:.9rem;font-weight:700">
+                        ✅ تأیید پیشفاکتور
+                    </button>
+                    <button class="pre-btn-convert" onclick="convertQuote()" id="btnConvert" style="display:none">🧾 تبدیل به فاکتور</button>
                     <button onclick="showView('list')"
                             style="background:#f1f5f9;border:1px solid #e2e8f0;padding:10px 20px;border-radius:10px;cursor:pointer;font-family:Vazirmatn,Tahoma,sans-serif;font-size:.9rem;color:#64748b">
                         🔙 انصراف
@@ -1272,6 +1305,8 @@ window.editQuote = function(id) {
         document.getElementById('hiddenOppId').value = q.opportunity_id || '';
         document.getElementById('btnConvert').style.display =
             (['draft','accepted','sent'].indexOf(q.status) >= 0) ? 'inline-flex' : 'none';
+        document.getElementById('btnAccept').style.display =
+            (['draft','sent'].indexOf(q.status) >= 0) ? 'inline-flex' : 'none';
         document.getElementById('itemsContainer').innerHTML = '';
         (q.items || []).forEach(function(item) { addItemRow(item); });
         updateTotals();
@@ -1367,6 +1402,33 @@ window.sendManagerNotif = function() {
             alert('✅ اعلان ارسال شد.');
             document.getElementById('notifMsgInput').value = '';
         } else { alert('❌ ' + (res.msg || 'خطا')); }
+    });
+};
+
+// ===== تأیید پیشفاکتور با بررسی موجودی =====
+window.acceptQuote = function() {
+    var id = parseInt(document.getElementById('editQuoteId').value);
+    if (!id) { alert('ابتدا پیشفاکتور را ذخیره کنید.'); return; }
+    if (!confirm('آیا از تأیید این پیشفاکتور اطمینان دارید؟\nبررسی موجودی انبار انجام می‌شود.')) return;
+    var btn = document.getElementById('btnAccept');
+    btn.disabled = true; btn.textContent = '⏳ در حال بررسی...';
+    post({ action: 'update_status', id: id, status: 'accepted' }).then(function(res) {
+        btn.disabled = false; btn.textContent = '✅ تأیید پیشفاکتور';
+        if (res.ok) {
+            btn.style.display = 'none';
+            alert('✅ پیشفاکتور تأیید شد. اعلان به مدیران ارسال گردید.');
+            loadList(1);
+        } else {
+            // نمایش خطای موجودی
+            var msg = res.msg || 'خطا';
+            if (res.items && res.items.length) {
+                msg += '\n' + res.items.join('\n');
+            }
+            alert('❌ ' + msg);
+        }
+    }).catch(function() {
+        btn.disabled = false; btn.textContent = '✅ تأیید پیشفاکتور';
+        alert('خطا در ارتباط با سرور.');
     });
 };
 

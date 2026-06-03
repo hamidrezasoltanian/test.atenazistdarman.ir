@@ -251,6 +251,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isAjax) {
                 "SELECT i.id, i.invoice_number, i.invoice_date, i.due_date,
                         i.subtotal, i.discount, i.tax, i.shipping,
                         i.total_amount, i.paid_amount, i.status, i.fin_doc_id,
+                        COALESCE(i.invoice_type,'official') AS invoice_type,
                         (i.total_amount - i.paid_amount) AS remaining,
                         COALESCE(p.company_name, p.name, i.customer_name) AS person_name
                  FROM fin_invoices i
@@ -456,13 +457,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isAjax) {
 
 // ---- تابع مشترک ذخیره/تأیید فاکتور ----
 function saveInvoiceToDb($pdo, $type, $targetStatus, $userId, $fiscalYearId) {
-    $editId   = (int)($_POST['invoice_id'] ?? 0);
-    $personId = (int)($_POST['person_id']  ?? 0);
-    $invDate  = trim(faToEn($_POST['invoice_date'] ?? ''));
-    $dueDate  = trim(faToEn($_POST['due_date']     ?? '')) ?: null;
-    $notes    = trim($_POST['notes'] ?? '');
-    $shipping = (int)str_replace([',', ' '], '', faToEn($_POST['shipping'] ?? '0'));
-    $items    = $_POST['items'] ?? [];
+    $editId      = (int)($_POST['invoice_id']   ?? 0);
+    $personId    = (int)($_POST['person_id']     ?? 0);
+    $invDate     = trim(faToEn($_POST['invoice_date'] ?? ''));
+    $dueDate     = trim(faToEn($_POST['due_date']     ?? '')) ?: null;
+    $notes       = trim($_POST['notes'] ?? '');
+    $shipping    = (int)str_replace([',', ' '], '', faToEn($_POST['shipping'] ?? '0'));
+    $items       = $_POST['items'] ?? [];
+    $invType     = in_array($_POST['invoice_type'] ?? '', ['official','adjustment'])
+                   ? $_POST['invoice_type'] : 'official';
+    // فاکتور تنظیمی: بدون مالیات
+    $noTax = ($invType === 'adjustment');
 
     if (!$personId) return ['ok' => false, 'msg' => 'انتخاب طرف حساب الزامی است.'];
     if (empty($items)) return ['ok' => false, 'msg' => 'حداقل یک ردیف کالا الزامی است.'];
@@ -486,7 +491,7 @@ function saveInvoiceToDb($pdo, $type, $targetStatus, $userId, $fiscalYearId) {
         $qty    = (float)faToEn($item['qty'] ?? 1);
         $price  = (int)str_replace([',', ' '], '', faToEn($item['unit_price'] ?? '0'));
         $discP  = (float)faToEn($item['discount_pct'] ?? '0');
-        $taxP   = (float)faToEn($item['tax_pct']      ?? '9');
+        $taxP   = $noTax ? 0.0 : (float)faToEn($item['tax_pct'] ?? '9');
         $sid    = (int)($item['stuff_id'] ?? 0) ?: null;
         $unit   = trim($item['unit'] ?? '');
 
@@ -534,25 +539,27 @@ function saveInvoiceToDb($pdo, $type, $targetStatus, $userId, $fiscalYearId) {
         $pdo->prepare(
             "UPDATE fin_invoices SET person_id=?, customer_name=?, invoice_date=?, due_date=?,
                      subtotal=?, discount=?, tax=?, shipping=?, total_amount=?,
-                     status=?, notes=?, updated_at=NOW()
+                     status=?, notes=?, invoice_type=?, updated_at=NOW()
              WHERE id=? AND is_deleted=0"
         )->execute([
             $personId, $personName, $invDate, $dueDate,
             $subtotal, $totalDiscount, $totalTax, $shipping, $totalAmount,
-            $targetStatus, $notes, $editId,
+            $targetStatus, $notes, $invType, $editId,
         ]);
         $invoiceId     = $editId;
         $invoiceNumber = $pdo->query("SELECT invoice_number FROM fin_invoices WHERE id=$editId")->fetchColumn();
     } else {
         $invoiceNumber = nextInvoiceNumber($pdo, $type);
+        // اضافه‌کردن ستون invoice_type در صورت نیاز
+        try { $pdo->exec("ALTER TABLE fin_invoices ADD COLUMN IF NOT EXISTS invoice_type ENUM('official','adjustment') NOT NULL DEFAULT 'official' AFTER type"); } catch (Throwable $e) {}
         $pdo->prepare(
             "INSERT INTO fin_invoices
-                (invoice_number, invoice_date, due_date, type, person_id, customer_name,
+                (invoice_number, invoice_date, due_date, type, invoice_type, person_id, customer_name,
                  subtotal, discount, tax, shipping, total_amount, paid_amount,
                  status, notes, fiscal_year_id, created_by, created_at)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,0,?,?,?,?,NOW())"
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,0,?,?,?,?,NOW())"
         )->execute([
-            $invoiceNumber, $invDate, $dueDate, $type, $personId, $personName,
+            $invoiceNumber, $invDate, $dueDate, $type, $invType, $personId, $personName,
             $subtotal, $totalDiscount, $totalTax, $shipping, $totalAmount,
             $targetStatus, $notes, $fiscalYearId, $userId,
         ]);
@@ -585,12 +592,15 @@ function saveInvoiceToDb($pdo, $type, $targetStatus, $userId, $fiscalYearId) {
         $accTax        = accIdByCode($pdo, '2103'); // بستانکار: مالیات
         $accShipping   = accIdByCode($pdo, '61');   // بستانکار: حمل
 
+        $docType = $invType === 'adjustment' ? 'sell_invoice_adj' : 'sell_invoice';
+        $docDesc = $invType === 'adjustment'
+            ? 'فاکتور تنظیمی فروش شماره ' . $invoiceNumber
+            : 'فاکتور رسمی فروش شماره '  . $invoiceNumber;
         $pdo->prepare(
             "INSERT INTO fin_docs (doc_number, doc_date, type, description, fiscal_year_id, ref_id, ref_type, created_by, created_at)
              VALUES (?,?,?,?,?,?,?,?,NOW())"
         )->execute([
-            $invoiceNumber, $invDate, 'sell_invoice',
-            'فاکتور فروش شماره ' . $invoiceNumber,
+            $invoiceNumber, $invDate, $docType, $docDesc,
             $fiscalYearId, $invoiceId, 'fin_invoice', $userId,
         ]);
         $docId = (int)$pdo->lastInsertId();
@@ -878,6 +888,24 @@ require_once __DIR__ . '/../../templates/header.php';
                     </div>
                 </div>
 
+                <!-- نوع فاکتور -->
+                <div style="margin-bottom:20px">
+                    <div class="inv-sec-title">نوع فاکتور</div>
+                    <div style="display:flex;gap:12px;flex-wrap:wrap">
+                        <label id="lblOfficial" style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 18px;border-radius:10px;border:2px solid #2563eb;background:#eff6ff;font-weight:700;color:#1d4ed8;transition:all .2s">
+                            <input type="radio" name="invoiceTypeRadio" value="official" checked onchange="onInvTypeChange(this.value)" style="accent-color:#2563eb">
+                            🧾 رسمی
+                            <small style="font-weight:400;color:#64748b;font-size:.75rem">(با مالیات ارزش افزوده)</small>
+                        </label>
+                        <label id="lblAdjustment" style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 18px;border-radius:10px;border:2px solid #e2e8f0;background:#f8fafc;color:#64748b;transition:all .2s">
+                            <input type="radio" name="invoiceTypeRadio" value="adjustment" onchange="onInvTypeChange(this.value)" style="accent-color:#7c3aed">
+                            📋 تنظیمی
+                            <small style="font-weight:400;font-size:.75rem">(بدون مالیات — داخلی)</small>
+                        </label>
+                        <input type="hidden" id="invTypeHidden" value="official">
+                    </div>
+                </div>
+
                 <!-- ردیف‌های کالا -->
                 <div class="inv-sec-title">ردیف‌های کالا / خدمات</div>
                 <div class="inv-items-section">
@@ -1002,13 +1030,17 @@ function renderTable(rows){
         return;
     }
     var h='<div style="overflow-x:auto"><table class="fin-table"><thead><tr>'
-        +'<th>شماره</th><th>تاریخ</th><th>مشتری</th>'
+        +'<th>شماره</th><th>نوع</th><th>تاریخ</th><th>مشتری</th>'
         +'<th>مبلغ کل (ریال)</th><th>پرداخت شده</th><th>مانده</th>'
         +'<th>وضعیت</th><th>عملیات</th></tr></thead><tbody>';
     rows.forEach(function(r){
         var badge='<span class="inv-badge '+r.status_class+'">'+r.status_label+'</span>';
+        var typeBadge = r.invoice_type === 'adjustment'
+            ? '<span style="font-size:.7rem;background:#f3e8ff;color:#7c3aed;padding:2px 7px;border-radius:8px;white-space:nowrap">تنظیمی</span>'
+            : '<span style="font-size:.7rem;background:#eff6ff;color:#1d4ed8;padding:2px 7px;border-radius:8px;white-space:nowrap">رسمی</span>';
         h+='<tr>'
           +'<td><strong style="color:#2563eb;direction:ltr;display:inline-block">'+esc(r.invoice_number)+'</strong></td>'
+          +'<td>'+typeBadge+'</td>'
           +'<td style="direction:ltr">'+esc(r.date_jalali)+'</td>'
           +'<td>'+esc(r.person_name||'—')+'</td>'
           +'<td style="direction:ltr;font-weight:700">'+r.total_fmt+'</td>'
@@ -1121,6 +1153,11 @@ function editInv(id){
         document.getElementById('invShipping').value=numFa(inv.shipping||0);
         document.getElementById('formTitle').textContent='✏️ ویرایش فاکتور';
         document.getElementById('formNum').textContent='شماره: '+inv.invoice_number;
+        // بازیابی نوع فاکتور
+        var itype = inv.invoice_type || 'official';
+        document.getElementById('invTypeHidden').value = itype;
+        document.querySelectorAll('[name="invoiceTypeRadio"]').forEach(function(r) { r.checked = (r.value === itype); });
+        onInvTypeChange(itype);
         (inv.items||[]).forEach(function(it){
             addRow(it.stuff_id,it.description,it.unit,it.qty,it.unit_price,it.discount_pct,it.tax_pct);
         });
@@ -1305,6 +1342,26 @@ document.addEventListener('click',function(e){
 // ============================================================
 // ذخیره فاکتور
 // ============================================================
+function onInvTypeChange(val) {
+    document.getElementById('invTypeHidden').value = val;
+    var isAdj = (val === 'adjustment');
+    document.getElementById('lblOfficial').style.cssText = !isAdj
+        ? 'display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 18px;border-radius:10px;border:2px solid #2563eb;background:#eff6ff;font-weight:700;color:#1d4ed8;transition:all .2s'
+        : 'display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 18px;border-radius:10px;border:2px solid #e2e8f0;background:#f8fafc;color:#64748b;transition:all .2s';
+    document.getElementById('lblAdjustment').style.cssText = isAdj
+        ? 'display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 18px;border-radius:10px;border:2px solid #7c3aed;background:#f3e8ff;font-weight:700;color:#7c3aed;transition:all .2s'
+        : 'display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 18px;border-radius:10px;border:2px solid #e2e8f0;background:#f8fafc;color:#64748b;transition:all .2s';
+    // در فاکتور تنظیمی ستون مالیات را صفر می‌کند
+    if (isAdj) {
+        document.querySelectorAll('[id^="tax-"]').forEach(function(el) { el.value = '0'; });
+        document.querySelectorAll('.tax-col').forEach(function(el) { el.style.opacity = '.4'; el.style.pointerEvents = 'none'; });
+    } else {
+        document.querySelectorAll('[id^="tax-"]').forEach(function(el) { el.value = '9'; });
+        document.querySelectorAll('.tax-col').forEach(function(el) { el.style.opacity = '1'; el.style.pointerEvents = ''; });
+    }
+    recalcAll();
+}
+
 function doSave(mode){
     var personId=document.getElementById('personId').value;
     var invDate=document.getElementById('invDate').value;
@@ -1340,6 +1397,7 @@ function doSave(mode){
     fd.append('due_date',document.getElementById('dueDate').value||'');
     fd.append('notes',document.getElementById('invNotes').value||'');
     fd.append('shipping',numEn(document.getElementById('invShipping').value).replace(/\D/g,'')||'0');
+    fd.append('invoice_type',document.getElementById('invTypeHidden').value||'official');
     items.forEach(function(it,i){Object.keys(it).forEach(function(k){fd.append('items['+i+']['+k+']',it[k]);});});
 
     var btn=mode==='draft'?document.querySelector('[onclick="doSave(\'draft\')"]'):document.querySelector('[onclick="doSave(\'confirm\')"]');
