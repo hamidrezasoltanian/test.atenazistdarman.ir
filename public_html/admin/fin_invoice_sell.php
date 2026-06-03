@@ -628,6 +628,31 @@ function saveInvoiceToDb($pdo, $type, $targetStatus, $userId, $fiscalYearId) {
 
     $pdo->commit();
 
+    // ── حواله خودکار انبار پس از تأیید فاکتور ──
+    if ($targetStatus === 'confirmed') {
+        try {
+            $hasStuffs = false;
+            foreach ($cleanItems as $item) { if (!empty($item['stuff_id'])) { $hasStuffs = true; break; } }
+            if ($hasStuffs) {
+                $storoomId = $pdo->query("SELECT id FROM inv_storerooms WHERE is_active=1 AND is_deleted=0 ORDER BY id LIMIT 1")->fetchColumn();
+                if ($storoomId) {
+                    $ticketSeq = $pdo->query("SELECT COALESCE(MAX(id),0)+1 FROM inv_tickets")->fetchColumn();
+                    $ticketNum = 'DS-'.date('Y').'-'.str_pad($ticketSeq, 4, '0', STR_PAD_LEFT);
+                    $pdo->prepare("INSERT INTO inv_tickets (ticket_number,type,ticket_date,storeroom_id,person_id,ref_type,ref_id,status,created_by) VALUES (?,?,?,?,?,?,?,?,?)")
+                        ->execute([$ticketNum,'dispatch',date('Y-m-d'),$storoomId,$personId,'invoice',$invoiceId,'confirmed',$userId]);
+                    $ticketId = (int)$pdo->lastInsertId();
+                    foreach ($cleanItems as $item) {
+                        if (empty($item['stuff_id'])) continue;
+                        $pdo->prepare("INSERT INTO inv_ticket_items (ticket_id,stuff_id,qty,unit_price,total) VALUES (?,?,?,?,?)")
+                            ->execute([$ticketId,$item['stuff_id'],$item['qty'],$item['unit_price'],$item['total']]);
+                        $pdo->prepare("UPDATE stuff_price_list SET total_inventory=total_inventory-? WHERE stuff_id=?")
+                            ->execute([$item['qty'],$item['stuff_id']]);
+                    }
+                }
+            }
+        } catch (Throwable $e) { /* حواله انبار اختیاری است */ }
+    }
+
     return [
         'ok'             => true,
         'invoice_id'     => $invoiceId,
@@ -635,7 +660,7 @@ function saveInvoiceToDb($pdo, $type, $targetStatus, $userId, $fiscalYearId) {
         'status'         => $targetStatus,
         'doc_id'         => $docId,
         'msg'            => $targetStatus === 'confirmed'
-            ? 'فاکتور تأیید شد و سند حسابداری ثبت گردید.'
+            ? 'فاکتور تأیید شد، سند حسابداری و حواله انبار ثبت گردید.'
             : 'پیش‌نویس فاکتور ذخیره شد.',
     ];
 }

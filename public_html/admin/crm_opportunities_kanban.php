@@ -158,7 +158,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $stmtAct->execute([$oppId]); $activities = $stmtAct->fetchAll(PDO::FETCH_ASSOC);
             foreach ($activities as &$a) { $dt = explode(' ', $a['created_at']); $p = explode('-', $dt[0]); $a['created_at_fa'] = count($p)==3 ? crm_greg_to_jalali($p[0],$p[1],$p[2],'/') . ' ' . substr($dt[1], 0, 5) : $a['created_at']; }
 
-            echo json_encode(['status' => 'success', 'opportunity' => $opp, 'logs' => $logs, 'comments' => $comments, 'calls' => $calls, 'missions' => $missions, 'tasks' => $tasks, 'notes' => $notes, 'activities' => $activities]);
+            // پیشفاکتورهای مرتبط
+            $quotes = [];
+            try {
+                $stmtQ = $pdo->prepare("SELECT id, quote_number, total_amount, status, quote_date FROM fin_preinvoices WHERE opportunity_id=? AND is_deleted=0 ORDER BY id DESC");
+                $stmtQ->execute([$oppId]);
+                $rawQuotes = $stmtQ->fetchAll(PDO::FETCH_ASSOC);
+                foreach ($rawQuotes as &$qr) {
+                    $p = explode('-', $qr['quote_date']);
+                    $qr['date_fa'] = count($p)==3 ? crm_greg_to_jalali($p[0],$p[1],$p[2],'/') : $qr['quote_date'];
+                    $qr['total_fmt'] = number_format((int)$qr['total_amount']);
+                }
+                unset($qr);
+                $quotes = $rawQuotes;
+            } catch (Throwable $eQ) { $quotes = []; }
+
+            echo json_encode(['status' => 'success', 'opportunity' => $opp, 'logs' => $logs, 'comments' => $comments, 'calls' => $calls, 'missions' => $missions, 'tasks' => $tasks, 'notes' => $notes, 'activities' => $activities, 'quotes' => $quotes]);
         } catch (Exception $e) { echo json_encode(['status' => 'error', 'message' => $e->getMessage()]); } exit;
     }
 
@@ -620,6 +635,7 @@ include __DIR__ . '/../../templates/sidebar.php';
                             <div class="c-title" style="font-weight: bold; color: #1e293b;"><?php echo htmlspecialchars($opp['title']); ?></div>
                             <div class="c-customer" style="color: <?php echo htmlspecialchars($colorValue); ?>;">🏢 <?php echo htmlspecialchars($opp['company_name']); ?></div>
                             <div class="c-expert"><img src="<?php echo htmlspecialchars($ePic); ?>"><span><?php echo htmlspecialchars(($opp['expert_fname'] ?? 'نامشخص') . ' ' . ($opp['expert_lname'] ?? '')); ?></span></div>
+                            <div style="margin-top:5px;text-align:left"><a href="fin_preinvoice.php?opportunity_id=<?php echo $opp['id']; ?>" onclick="event.stopPropagation()" style="font-size:10px;color:#92400e;background:#fffbeb;border:1px solid #fcd34d;padding:2px 7px;border-radius:8px;text-decoration:none">🧾 پیشفاکتور</a></div>
                         </div>
                     <?php endforeach; ?>
                 </div>
@@ -769,6 +785,7 @@ include __DIR__ . '/../../templates/sidebar.php';
                         <div class="nav-tab-item" onclick="window.switchMainTab('missions')">🚗 مأموریت‌ها</div>
                         <div class="nav-tab-item" onclick="window.switchMainTab('tasks')">📝 وظایف</div>
                         <div class="nav-tab-item" onclick="window.switchMainTab('notes')">📋 یادداشت‌ها</div>
+                        <div class="nav-tab-item" onclick="window.switchMainTab('quotes')">🧾 پیشفاکتورها</div>
                         <div class="nav-tab-item" onclick="window.switchMainTab('history')">⏱️ تاریخچه</div>
                     </div>
                     <div id="tabContentContainer" style="flex:1; overflow-y:auto; padding-right:5px;"></div>
@@ -960,7 +977,7 @@ include __DIR__ . '/../../templates/sidebar.php';
     
     window.holdTimer = null; window.chatPollInterval = null; window.needsBoardRefresh = false;
     window.activeOppId = 0; window.activeCustomerName = ''; window.activeCustomerId = 0;
-    window.currentOppCalls = []; window.currentOppActivities = []; window.currentOppMissions = []; window.currentOppTasks = []; window.currentOppNotes = [];
+    window.currentOppCalls = []; window.currentOppActivities = []; window.currentOppMissions = []; window.currentOppTasks = []; window.currentOppNotes = []; window.currentOppQuotes = [];
     window.currentReplyId = null; window.editingMessageId = null; window.activeContextMsgId = null;
     window.mediaRecorder = null; window.audioChunks = []; window.recordingInterval = null;
     window.COMMON_EMOJIS = ['😀','😂','😍','😭','😡','👍','👎','🙏','❤️','💔','🎉','🔥','👀','✅','❌'];
@@ -1431,6 +1448,7 @@ include __DIR__ . '/../../templates/sidebar.php';
                 
                 window.currentOppCalls = res.calls || []; 
                 window.currentOppActivities = res.activities || [];
+                window.currentOppQuotes = res.quotes || [];
                 window.currentOppMissions = res.missions || [];
                 window.currentOppTasks = res.tasks || [];
                 window.currentOppNotes = res.notes || [];
@@ -1588,6 +1606,27 @@ include __DIR__ . '/../../templates/sidebar.php';
                 var html = '<div style="display:flex; justify-content:flex-end; margin-bottom:15px;"><button class="btn btn-primary" style="padding:4px 10px; font-size:0.8rem;" onclick="window.openNoteModal()">➕ ثبت یادداشت جدید</button></div><div style="text-align:right;">';
                 window.currentOppNotes.forEach(function(n) { html += '<div class="call-item"><div style="font-size:0.75rem; color:#64748b; margin-bottom:5px;">ثبت در: '+(n.ndate_fa || n.ndate)+'</div><div style="font-size:0.9rem; color:#1e293b; line-height:1.6;">'+window.escapeHtml(n.note_text).replace(/\n/g, '<br>')+'</div></div>'; });
                 container.innerHTML = html + '</div>';
+            }
+        } else if (tabName === 'quotes') {
+            var qStatusMap = {draft:'پیش‌نویس',sent:'ارسال شده',accepted:'تأیید شده',rejected:'رد شده',converted:'تبدیل به فاکتور'};
+            var qStatusColor = {draft:'#64748b',sent:'#1d4ed8',accepted:'#15803d',rejected:'#b91c1c',converted:'#6d28d9'};
+            var qStatusBg = {draft:'#f1f5f9',sent:'#dbeafe',accepted:'#dcfce7',rejected:'#fee2e2',converted:'#f3e8ff'};
+            if(!window.currentOppQuotes || window.currentOppQuotes.length===0) {
+                container.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:250px;gap:15px;"><span style="font-size:3rem">🧾</span><a href="fin_preinvoice.php?opportunity_id='+window.activeOppId+'" target="_blank" style="padding:8px 18px;background:#f59e0b;color:#fff;border-radius:8px;text-decoration:none;font-weight:700;font-size:13px">➕ صدور پیشفاکتور جدید</a></div>';
+            } else {
+                var qHtml = '<div style="display:flex;justify-content:flex-end;margin-bottom:12px"><a href="fin_preinvoice.php?opportunity_id='+window.activeOppId+'" target="_blank" style="padding:5px 12px;background:#f59e0b;color:#fff;border-radius:7px;text-decoration:none;font-size:12px;font-weight:700">➕ پیشفاکتور جدید</a></div><div style="direction:rtl">';
+                window.currentOppQuotes.forEach(function(q){
+                    var st=qStatusMap[q.status]||q.status, sc=qStatusColor[q.status]||'#64748b', sb=qStatusBg[q.status]||'#f1f5f9';
+                    qHtml+='<div class="call-item" style="border-right:3px solid #f59e0b">'
+                        +'<div class="call-item-header"><span style="color:#92400e;font-weight:700">🧾 '+window.escapeHtml(q.quote_number)+'</span>'
+                        +'<span style="font-size:0.8rem;color:#64748b">'+(q.date_fa||q.quote_date)+'</span></div>'
+                        +'<div class="call-item-meta" style="margin-top:5px">'
+                        +'<span>مبلغ: <b>'+q.total_fmt+' ریال</b></span> | '
+                        +'<span>وضعیت: <b style="background:'+sb+';color:'+sc+';padding:2px 8px;border-radius:10px;font-size:11px">'+st+'</b></span>'
+                        +'<a href="fin_preinvoice.php?edit='+q.id+'" target="_blank" style="margin-right:10px;font-size:11px;color:#2563eb">مشاهده ←</a>'
+                        +'</div></div>';
+                });
+                container.innerHTML = qHtml + '</div>';
             }
         } else if (tabName === 'history') {
             if(!window.currentOppActivities || window.currentOppActivities.length === 0) {
