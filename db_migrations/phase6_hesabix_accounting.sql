@@ -202,7 +202,14 @@ ALTER TABLE `fin_persons`
   ADD COLUMN IF NOT EXISTS `company`       VARCHAR(200) NULL COMMENT 'نام شرکت'                  AFTER `shenasemeli`;
 
 -- ─────────────────────────────────────────────────────────────
--- ۵. اضافه کردن ستون‌های تکمیلی به fin_cheques
+-- ۵. اضافه کردن ستون shipping به fin_invoices
+-- ─────────────────────────────────────────────────────────────
+
+ALTER TABLE `fin_invoices`
+  ADD COLUMN IF NOT EXISTS `shipping` DECIMAL(20,0) NOT NULL DEFAULT 0 COMMENT 'هزینه حمل' AFTER `tax`;
+
+-- ─────────────────────────────────────────────────────────────
+-- ۶. اضافه کردن ستون‌های تکمیلی به fin_cheques
 -- ─────────────────────────────────────────────────────────────
 
 ALTER TABLE `fin_cheques`
