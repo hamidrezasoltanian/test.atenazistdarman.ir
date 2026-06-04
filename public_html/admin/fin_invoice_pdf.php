@@ -13,37 +13,77 @@ require_once __DIR__ . '/../../includes/db.php';
 require_once __DIR__ . '/../../includes/functions.php';
 
 // ---- پارامترهای ورودی ----
-$id   = (int)($_GET['id'] ?? 0);
-$type = in_array($_GET['type'] ?? '', ['sell', 'buy']) ? $_GET['type'] : 'sell';
+$id      = (int)($_GET['id'] ?? 0);
+$rawType = $_GET['type'] ?? 'sell';
+$isQuote = ($rawType === 'quote');
+$type    = $isQuote ? 'sell' : (in_array($rawType, ['sell','buy']) ? $rawType : 'sell');
 
 if ($id <= 0) {
     die('شناسه فاکتور نامعتبر است.');
 }
 
-// ---- بارگذاری فاکتور ----
-$stmtInv = $pdo->prepare(
-    "SELECT i.*,
-            COALESCE(p.company_name, p.name) AS person_name,
-            p.address                         AS person_address,
-            p.mobile                          AS person_mobile,
-            p.codeeghtesadi
-     FROM fin_invoices i
-     LEFT JOIN fin_persons p ON p.id = i.person_id
-     WHERE i.id = ? AND i.is_deleted = 0"
-);
-$stmtInv->execute([$id]);
-$inv = $stmtInv->fetch(PDO::FETCH_ASSOC);
+// ---- آفر: بارگذاری از fin_quotes ----
+if ($isQuote) {
+    $stQ = $pdo->prepare(
+        "SELECT q.*,
+                COALESCE(p.company_name, p.name) AS person_name,
+                p.address AS person_address,
+                p.mobile  AS person_mobile,
+                '' AS codeeghtesadi
+         FROM fin_quotes q
+         LEFT JOIN fin_persons p ON p.id = q.person_id
+         WHERE q.id = ? AND q.is_deleted = 0"
+    );
+    $stQ->execute([$id]);
+    $inv = $stQ->fetch(PDO::FETCH_ASSOC);
+    if (!$inv) die('آفر یافت نشد.');
+    // نرمال‌سازی فیلدها برای سازگاری با کد PDF زیر
+    $inv['invoice_number'] = $inv['quote_number'] ?? ('OFR-' . $id);
+    $inv['invoice_date']   = $inv['quote_date']   ?? date('Y-m-d');
+    $inv['type']           = 'sell';
+    $inv['status']         = $inv['status'] ?? 'draft';
+    $inv['total_amount']   = $inv['total_amount'] ?? 0;
+    $inv['paid_amount']    = 0;
 
-if (!$inv) {
-    die('فاکتور یافت نشد یا حذف شده است.');
+    $stQI = $pdo->prepare(
+        "SELECT description, qty AS quantity, unit_price, discount_pct AS discount_percent,
+                tax_pct AS tax_percent, total AS total_price, unit, stuff_id
+         FROM fin_quote_items WHERE quote_id = ? ORDER BY row_order"
+    );
+    $stQI->execute([$id]);
+    $items = $stQI->fetchAll(PDO::FETCH_ASSOC);
+
+    // برچسب PDF آفر
+    define('PDF_DOC_LABEL', 'آفر / قیمت‌نامه رسمی');
+} else {
+    // ---- بارگذاری فاکتور معمولی ----
+    $stmtInv = $pdo->prepare(
+        "SELECT i.*,
+                COALESCE(p.company_name, p.name) AS person_name,
+                p.address                         AS person_address,
+                p.mobile                          AS person_mobile,
+                p.codeeghtesadi
+         FROM fin_invoices i
+         LEFT JOIN fin_persons p ON p.id = i.person_id
+         WHERE i.id = ? AND i.is_deleted = 0"
+    );
+    $stmtInv->execute([$id]);
+    $inv = $stmtInv->fetch(PDO::FETCH_ASSOC);
+
+    if (!$inv) {
+        die('فاکتور یافت نشد یا حذف شده است.');
+    }
+    if (!defined('PDF_DOC_LABEL')) define('PDF_DOC_LABEL', $type === 'buy' ? 'فاکتور خرید' : 'فاکتور فروش');
 }
 
+if (!$isQuote) {
 // ---- بارگذاری ردیف‌های فاکتور ----
 $stmtItems = $pdo->prepare(
     "SELECT * FROM fin_invoice_items WHERE invoice_id = ? ORDER BY row_order"
 );
 $stmtItems->execute([$id]);
 $items = $stmtItems->fetchAll(PDO::FETCH_ASSOC);
+} // end if (!$isQuote)
 
 // ---- بارگذاری اطلاعات شرکت از settings ----
 $settingKeys = ['company_name', 'company_address', 'company_phone', 'company_logo'];

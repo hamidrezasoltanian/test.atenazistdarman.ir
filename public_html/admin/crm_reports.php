@@ -468,6 +468,11 @@ if ($isAjax) {
         // ═══ پیش‌بینی درآمد از pipeline ═══════════════════════════════════════════
         case 'forecast_data': {
             try {
+                // اطمینان از وجود ستون probability
+                try {
+                    $pdo->exec("ALTER TABLE crm_opportunities ADD COLUMN IF NOT EXISTS `probability` INT NOT NULL DEFAULT 50");
+                } catch (Throwable $ae) {}
+
                 // واکشی فرصت‌های CRM با ارزش و احتمال هر مرحله
                 $sql = "SELECT s.name AS stage, s.color, s.order_num,
                                COUNT(o.id) AS opp_count,
