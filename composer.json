@@ -1,0 +1,9 @@
+{
+    "name": "atena/erp",
+    "description": "Atena ERP",
+    "type": "project",
+    "minimum-stability": "stable",
+    "require": {
+        "phpoffice/phpspreadsheet": "^5.7"
+    }
+}

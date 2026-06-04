@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#2563eb">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="آتنا ERP">
+<link rel="manifest" href="manifest.json">
+<title>آتنا زیست درمان — ERP</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  :root {
+    --blue: #2563eb; --blue-l: #dbeafe; --green: #16a34a; --green-l: #dcfce7;
+    --red: #dc2626; --red-l: #fee2e2; --amber: #d97706; --amber-l: #fef9c3;
+    --purple: #7c3aed; --purple-l: #ede9fe;
+    --gray: #64748b; --gray-l: #f8fafc; --border: #e2e8f0;
+    --radius: .75rem; --shadow: 0 2px 8px rgba(0,0,0,.08);
+  }
+  body { font-family: 'Vazirmatn', Tahoma, sans-serif; background: #f1f5f9; color: #1e293b; min-height: 100vh; }
+  @import url('https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css');
+
+  /* ── Screen management ── */
+  .screen { display: none; flex-direction: column; min-height: 100vh; }
+  .screen.active { display: flex; }
+
+  /* ── Login screen ── */
+  #loginScreen { align-items: center; justify-content: center; padding: 1.5rem; background: linear-gradient(135deg,#1e40af,#7c3aed); }
+  .login-box { background: #fff; border-radius: 1.25rem; padding: 2rem 1.5rem; width: 100%; max-width: 380px; box-shadow: 0 20px 60px rgba(0,0,0,.2); }
+  .login-logo { text-align: center; margin-bottom: 1.5rem; }
+  .login-logo h1 { font-size: 1.3rem; color: #1e293b; margin-top: .5rem; }
+  .login-logo .sub { font-size: .8rem; color: var(--gray); margin-top: .25rem; }
+  .field { margin-bottom: 1rem; }
+  .field label { display: block; font-size: .82rem; color: #374151; margin-bottom: .3rem; font-weight: 600; }
+  .field input { width: 100%; padding: .65rem .9rem; border: 1.5px solid var(--border); border-radius: .6rem; font-family: inherit; font-size: .95rem; transition: .2s; }
+  .field input:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-l); }
+  .btn-primary { width: 100%; padding: .75rem; background: var(--blue); color: #fff; border: none; border-radius: .65rem; font-family: inherit; font-size: 1rem; font-weight: 700; cursor: pointer; transition: .2s; }
+  .btn-primary:hover { background: #1d4ed8; }
+  .btn-primary:disabled { background: var(--gray); }
+  .error-msg { color: var(--red); font-size: .82rem; margin-top: .5rem; text-align: center; display: none; }
+
+  /* ── App shell ── */
+  #appScreen { background: #f1f5f9; }
+  .top-bar { background: #fff; border-bottom: 1px solid var(--border); padding: .75rem 1rem; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+  .top-bar-title { font-size: 1rem; font-weight: 700; color: #1e293b; }
+  .top-bar-actions { display: flex; gap: .5rem; }
+  .icon-btn { background: none; border: none; cursor: pointer; font-size: 1.1rem; padding: .25rem; color: var(--gray); }
+  .main-content { flex: 1; overflow-y: auto; padding: 1rem; padding-bottom: 5rem; }
+
+  /* ── Bottom nav ── */
+  .bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; background: #fff; border-top: 1px solid var(--border); display: flex; z-index: 100; }
+  .nav-item { flex: 1; display: flex; flex-direction: column; align-items: center; padding: .6rem .25rem .4rem; cursor: pointer; border: none; background: none; font-family: inherit; color: var(--gray); transition: .2s; }
+  .nav-item.active { color: var(--blue); }
+  .nav-item .ico { font-size: 1.2rem; }
+  .nav-item .lbl { font-size: .65rem; margin-top: .15rem; }
+
+  /* ── Cards ── */
+  .card { background: #fff; border-radius: var(--radius); padding: 1rem; margin-bottom: .75rem; box-shadow: var(--shadow); }
+  .card-title { font-size: .95rem; font-weight: 700; margin-bottom: .75rem; color: #1e293b; }
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; margin-bottom: 1rem; }
+  .stat-card { background: #fff; border-radius: var(--radius); padding: .85rem; border: 1px solid var(--border); box-shadow: var(--shadow); text-align: center; }
+  .stat-val { font-size: 1.4rem; font-weight: 800; }
+  .stat-lbl { font-size: .72rem; color: var(--gray); margin-top: .2rem; }
+  .stat-card.blue .stat-val { color: var(--blue); }
+  .stat-card.green .stat-val { color: var(--green); }
+  .stat-card.amber .stat-val { color: var(--amber); }
+  .stat-card.purple .stat-val { color: var(--purple); }
+
+  /* ── List items ── */
+  .list-item { background: #fff; border-radius: var(--radius); padding: .85rem 1rem; margin-bottom: .5rem; box-shadow: var(--shadow); display: flex; align-items: center; gap: .75rem; }
+  .list-item .li-icon { width: 2.5rem; height: 2.5rem; border-radius: .5rem; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; flex-shrink: 0; }
+  .list-item .li-body { flex: 1; min-width: 0; }
+  .list-item .li-title { font-size: .88rem; font-weight: 600; color: #1e293b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .list-item .li-sub { font-size: .75rem; color: var(--gray); margin-top: .15rem; }
+  .list-item .li-right { text-align: left; flex-shrink: 0; }
+  .list-item .li-amount { font-size: .88rem; font-weight: 700; }
+  .list-item .li-badge { font-size: .65rem; display: inline-block; padding: .15em .5em; border-radius: 1rem; font-weight: 600; margin-top: .2rem; }
+
+  /* ── Badges ── */
+  .badge-blue   { background: var(--blue-l);   color: #1e40af; }
+  .badge-green  { background: var(--green-l);  color: #166534; }
+  .badge-red    { background: var(--red-l);    color: #991b1b; }
+  .badge-amber  { background: var(--amber-l);  color: #854d0e; }
+  .badge-gray   { background: #f1f5f9;         color: #475569; }
+  .badge-purple { background: var(--purple-l); color: #5b21b6; }
+
+  /* ── Section header ── */
+  .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: .75rem; }
+  .section-title { font-size: .95rem; font-weight: 700; color: #1e293b; }
+  .section-link { font-size: .78rem; color: var(--blue); cursor: pointer; }
+
+  /* ── Empty state ── */
+  .empty { text-align: center; padding: 3rem 1rem; color: var(--gray); }
+  .empty .ico { font-size: 2.5rem; margin-bottom: .75rem; }
+
+  /* ── Pull-to-refresh indicator ── */
+  .refresh-bar { text-align: center; padding: .5rem; font-size: .78rem; color: var(--gray); display: none; }
+  .refreshing .refresh-bar { display: block; }
+
+  /* ── Loading skeleton ── */
+  .skeleton { background: linear-gradient(90deg,#f0f0f0 25%,#e0e0e0 50%,#f0f0f0 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; border-radius: .5rem; }
+  @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+  .skel-card { height: 80px; margin-bottom: .5rem; }
+  .skel-stat { height: 70px; border-radius: var(--radius); }
+
+  /* ── Tab pages ── */
+  .tab-page { display: none; }
+  .tab-page.active { display: block; }
+
+  /* ── Charts ── */
+  canvas { max-width: 100%; }
+
+  /* ── Offline banner ── */
+  #offlineBanner { background: var(--amber); color: #fff; text-align: center; padding: .4rem; font-size: .82rem; display: none; position: sticky; top: 57px; z-index: 99; }
+  body.offline #offlineBanner { display: block; }
+</style>
+</head>
+<body>
+
+<!-- ════════════════ LOGIN SCREEN ════════════════ -->
+<div class="screen active" id="loginScreen">
+  <div class="login-box">
+    <div class="login-logo">
+      <div style="font-size:2.5rem">🏥</div>
+      <h1>آتنا زیست درمان</h1>
+      <div class="sub">سامانه مدیریت کسب‌وکار</div>
+    </div>
+    <div class="field">
+      <label>نام کاربری</label>
+      <input type="text" id="loginUser" placeholder="username" autocomplete="username">
+    </div>
+    <div class="field">
+      <label>رمز عبور</label>
+      <input type="password" id="loginPass" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <button class="btn-primary" id="loginBtn" onclick="doLogin()">ورود به سیستم</button>
+    <div class="error-msg" id="loginErr"></div>
+  </div>
+</div>
+
+<!-- ════════════════ APP SCREEN ════════════════ -->
+<div class="screen" id="appScreen">
+  <div class="top-bar">
+    <div class="top-bar-title" id="topBarTitle">داشبورد</div>
+    <div class="top-bar-actions">
+      <button class="icon-btn" onclick="refreshCurrentTab()" title="بارگذاری مجدد">🔄</button>
+      <button class="icon-btn" onclick="doLogout()" title="خروج">🚪</button>
+    </div>
+  </div>
+  <div id="offlineBanner">⚠️ بدون اینترنت — نمایش داده‌های کش‌شده</div>
+  <div class="main-content">
+
+    <!-- داشبورد -->
+    <div class="tab-page active" id="page-dashboard">
+      <div id="dashStats" class="stat-grid">
+        <div class="skel-stat skeleton"></div>
+        <div class="skel-stat skeleton"></div>
+        <div class="skel-stat skeleton"></div>
+        <div class="skel-stat skeleton"></div>
+      </div>
+      <div id="dashChart" class="card" style="display:none">
+        <div class="card-title">📈 فروش ماه جاری</div>
+        <canvas id="salesChart" height="160"></canvas>
+      </div>
+      <div id="dashAlerts"></div>
+    </div>
+
+    <!-- فرصت‌های CRM -->
+    <div class="tab-page" id="page-crm">
+      <div class="section-header">
+        <span class="section-title">🎯 فرصت‌های فروش</span>
+        <span class="section-link" onclick="loadCrm()">بارگذاری مجدد</span>
+      </div>
+      <div id="crmList"><div class="skeleton skel-card"></div><div class="skeleton skel-card"></div></div>
+    </div>
+
+    <!-- فاکتورها -->
+    <div class="tab-page" id="page-invoices">
+      <div class="section-header">
+        <span class="section-title">🧾 فاکتورهای اخیر</span>
+        <span class="section-link" onclick="loadInvoices()">بارگذاری مجدد</span>
+      </div>
+      <div id="invList"><div class="skeleton skel-card"></div><div class="skeleton skel-card"></div></div>
+    </div>
+
+    <!-- HR -->
+    <div class="tab-page" id="page-hr">
+      <div class="section-header">
+        <span class="section-title">👥 مرخصی‌های در انتظار</span>
+        <span class="section-link" onclick="loadHr()">بارگذاری مجدد</span>
+      </div>
+      <div id="hrList"><div class="skeleton skel-card"></div><div class="skeleton skel-card"></div></div>
+    </div>
+
+  </div><!-- /main-content -->
+
+  <!-- Bottom Nav -->
+  <nav class="bottom-nav">
+    <button class="nav-item active" data-tab="dashboard" onclick="switchTab('dashboard')">
+      <span class="ico">📊</span><span class="lbl">داشبورد</span>
+    </button>
+    <button class="nav-item" data-tab="crm" onclick="switchTab('crm')">
+      <span class="ico">🎯</span><span class="lbl">CRM</span>
+    </button>
+    <button class="nav-item" data-tab="invoices" onclick="switchTab('invoices')">
+      <span class="ico">🧾</span><span class="lbl">فاکتور</span>
+    </button>
+    <button class="nav-item" data-tab="hr" onclick="switchTab('hr')">
+      <span class="ico">👥</span><span class="lbl">HR</span>
+    </button>
+  </nav>
+</div>
+
+<script>
+// ── تنظیمات ──────────────────────────────────────────────────
+var API_BASE = (function(){
+  var p = window.location.pathname.split('/');
+  var i = p.indexOf('pwa');
+  return p.slice(0, i).join('/') + '/api/v1';
+})();
+
+var token = localStorage.getItem('erp_token') || '';
+var currentUser = JSON.parse(localStorage.getItem('erp_user') || 'null');
+var currentTab = 'dashboard';
+var tabLoaded = {};
+
+// ── آفلاین ──────────────────────────────────────────────────
+window.addEventListener('online',  () => document.body.classList.remove('offline'));
+window.addEventListener('offline', () => document.body.classList.add('offline'));
+if (!navigator.onLine) document.body.classList.add('offline');
+
+// ── Helper: API call ─────────────────────────────────────────
+function api(path, opts) {
+  opts = opts || {};
+  var headers = Object.assign({'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'}, opts.headers || {});
+  return fetch(API_BASE + path, Object.assign({headers: headers}, opts || {}))
+    .then(r => {
+      if (r.status === 401) { doLogout(); throw new Error('unauthorized'); }
+      return r.json();
+    });
+}
+
+function fmt(n) { return parseInt(n || 0).toLocaleString('fa-IR'); }
+function esc(s) { return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// ── Login ────────────────────────────────────────────────────
+function doLogin() {
+  var user = document.getElementById('loginUser').value.trim();
+  var pass = document.getElementById('loginPass').value;
+  var btn  = document.getElementById('loginBtn');
+  var err  = document.getElementById('loginErr');
+  if (!user || !pass) { showErr('نام کاربری و رمز عبور الزامی هستند'); return; }
+
+  btn.disabled = true; btn.textContent = 'در حال ورود...';
+  err.style.display = 'none';
+
+  fetch(API_BASE + '/auth/login', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({username: user, password: pass})
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.success && d.data && d.data.token) {
+      token = d.data.token;
+      currentUser = d.data.user || {};
+      localStorage.setItem('erp_token', token);
+      localStorage.setItem('erp_user', JSON.stringify(currentUser));
+      showApp();
+    } else {
+      showErr(d.error || 'نام کاربری یا رمز عبور اشتباه است');
+    }
+  })
+  .catch(() => showErr('خطا در اتصال به سرور'))
+  .finally(() => { btn.disabled = false; btn.textContent = 'ورود به سیستم'; });
+}
+
+function showErr(msg) {
+  var el = document.getElementById('loginErr');
+  el.textContent = msg; el.style.display = 'block';
+}
+
+document.getElementById('loginPass').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doLogin();
+});
+
+// ── Logout ───────────────────────────────────────────────────
+function doLogout() {
+  if (token) api('/auth/logout', {method: 'POST'}).catch(() => {});
+  token = '';
+  localStorage.removeItem('erp_token');
+  localStorage.removeItem('erp_user');
+  document.getElementById('appScreen').classList.remove('active');
+  document.getElementById('loginScreen').classList.add('active');
+  tabLoaded = {};
+}
+
+// ── App ──────────────────────────────────────────────────────
+function showApp() {
+  document.getElementById('loginScreen').classList.remove('active');
+  document.getElementById('appScreen').classList.add('active');
+  var name = currentUser && (currentUser.full_name || currentUser.username) ? (currentUser.full_name || currentUser.username) : '';
+  if (name) document.getElementById('topBarTitle').textContent = 'سلام، ' + name;
+  tabLoaded = {};
+  loadDashboard();
+}
+
+// ── Tab switching ─────────────────────────────────────────────
+function switchTab(tab) {
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.tab === tab));
+  document.querySelectorAll('.tab-page').forEach(el => el.classList.toggle('active', el.id === 'page-' + tab));
+  currentTab = tab;
+  var titles = {dashboard:'داشبورد', crm:'فرصت‌های فروش', invoices:'فاکتورها', hr:'منابع انسانی'};
+  document.getElementById('topBarTitle').textContent = titles[tab] || 'آتنا ERP';
+
+  if (!tabLoaded[tab]) {
+    tabLoaded[tab] = true;
+    if (tab === 'crm')      loadCrm();
+    if (tab === 'invoices') loadInvoices();
+    if (tab === 'hr')       loadHr();
+  }
+}
+
+function refreshCurrentTab() {
+  tabLoaded[currentTab] = false;
+  switchTab(currentTab);
+  if (currentTab === 'dashboard') { tabLoaded.dashboard = true; loadDashboard(); }
+}
+
+// ── Dashboard ─────────────────────────────────────────────────
+function loadDashboard() {
+  api('/dashboard/summary')
+  .then(d => {
+    if (!d.success) return;
+    var s = d.data || {};
+    var cache = {crm_open: s.crm_open_opportunities || 0, inv_total: s.fin_total_invoices || 0, cheq: s.fin_pending_cheques || 0, stock_alerts: s.inv_low_stock_count || 0};
+    localStorage.setItem('erp_dash_cache', JSON.stringify(cache));
+    renderDashStats(cache);
+    renderDashAlerts(s);
+  })
+  .catch(() => {
+    var cache = JSON.parse(localStorage.getItem('erp_dash_cache') || 'null');
+    if (cache) renderDashStats(cache);
+  });
+}
+
+function renderDashStats(s) {
+  document.getElementById('dashStats').innerHTML =
+    statCard(fmt(s.crm_open || s.crm_open_opportunities || 0), 'فرصت‌های باز', 'blue', '🎯') +
+    statCard(fmt(s.inv_total || s.fin_total_invoices || 0), 'فاکتورهای اخیر', 'green', '🧾') +
+    statCard(fmt(s.cheq || s.fin_pending_cheques || 0), 'چک در انتظار', 'amber', '📝') +
+    statCard(fmt(s.stock_alerts || s.inv_low_stock_count || 0), 'هشدار موجودی', 'purple', '📦');
+}
+
+function statCard(val, lbl, cls, ico) {
+  return '<div class="stat-card '+cls+'"><div style="font-size:1.3rem">'+ico+'</div><div class="stat-val">'+val+'</div><div class="stat-lbl">'+lbl+'</div></div>';
+}
+
+function renderDashAlerts(s) {
+  var h = '';
+  if (s.fin_overdue_invoices > 0) {
+    h += alert('⚠️', 'فاکتور معوق', fmt(s.fin_overdue_invoices) + ' فاکتور وصول نشده', 'amber');
+  }
+  if (s.inv_low_stock_count > 0) {
+    h += alert('📦', 'کم‌موجودی', fmt(s.inv_low_stock_count) + ' کالا زیر حد بحرانی', 'red');
+  }
+  if (s.hr_pending_leaves > 0) {
+    h += alert('👥', 'مرخصی در انتظار', fmt(s.hr_pending_leaves) + ' درخواست تأیید نشده', 'blue');
+  }
+  document.getElementById('dashAlerts').innerHTML = h;
+}
+
+function alert(ico, title, sub, cls) {
+  var colors = {amber:'#fef9c3',red:'#fee2e2',blue:'#dbeafe',green:'#dcfce7'};
+  return '<div style="background:'+colors[cls]+';border-radius:.65rem;padding:.75rem 1rem;margin-bottom:.5rem;display:flex;gap:.75rem;align-items:center">'
+    +'<span style="font-size:1.3rem">'+ico+'</span>'
+    +'<div><div style="font-weight:700;font-size:.88rem">'+title+'</div><div style="font-size:.78rem;color:var(--gray)">'+sub+'</div></div>'
+    +'</div>';
+}
+
+// ── CRM ──────────────────────────────────────────────────────
+function loadCrm() {
+  document.getElementById('crmList').innerHTML = '<div class="skeleton skel-card"></div><div class="skeleton skel-card"></div><div class="skeleton skel-card"></div>';
+  api('/crm/opportunities?limit=20')
+  .then(d => {
+    if (!d.success || !d.data) { document.getElementById('crmList').innerHTML = empty('هیچ فرصتی یافت نشد'); return; }
+    var items = Array.isArray(d.data) ? d.data : (d.data.items || []);
+    if (!items.length) { document.getElementById('crmList').innerHTML = empty('فرصتی ثبت نشده'); return; }
+    var stageColors = {new:'blue', qualified:'blue', proposal:'amber', negotiation:'amber', closed_won:'green', closed_lost:'red'};
+    var stageNames  = {new:'جدید', qualified:'واجد شرایط', proposal:'پیشنهاد', negotiation:'مذاکره', closed_won:'بسته‌شده✅', closed_lost:'شکست‌خورده'};
+    var h = items.map(function(opp) {
+      var cls = stageColors[opp.stage] || 'gray';
+      return '<div class="list-item">'
+        +'<div class="li-icon" style="background:var(--'+cls+'-l)">🎯</div>'
+        +'<div class="li-body">'
+          +'<div class="li-title">'+esc(opp.title || opp.name || '—')+'</div>'
+          +'<div class="li-sub">'+esc(opp.company_name || opp.customer_name || '')+'</div>'
+        +'</div>'
+        +'<div class="li-right">'
+          +'<div class="li-amount" style="color:var(--'+cls+')">'+fmt(opp.value || opp.expected_value || 0)+'</div>'
+          +'<span class="li-badge badge-'+cls+'">'+(stageNames[opp.stage]||opp.stage||'—')+'</span>'
+        +'</div>'
+        +'</div>';
+    }).join('');
+    document.getElementById('crmList').innerHTML = h;
+  })
+  .catch(() => { document.getElementById('crmList').innerHTML = empty('خطا در بارگذاری'); });
+}
+
+// ── Invoices ─────────────────────────────────────────────────
+function loadInvoices() {
+  document.getElementById('invList').innerHTML = '<div class="skeleton skel-card"></div><div class="skeleton skel-card"></div><div class="skeleton skel-card"></div>';
+  api('/fin/invoices?limit=20')
+  .then(d => {
+    if (!d.success || !d.data) { document.getElementById('invList').innerHTML = empty('فاکتوری یافت نشد'); return; }
+    var items = Array.isArray(d.data) ? d.data : (d.data.items || []);
+    if (!items.length) { document.getElementById('invList').innerHTML = empty('فاکتوری ثبت نشده'); return; }
+    var stColors = {draft:'gray', confirmed:'blue', partial:'amber', paid:'green', cancelled:'red'};
+    var stNames  = {draft:'پیش‌نویس', confirmed:'تأیید‌شده', partial:'پرداخت ناقص', paid:'پرداخت‌شده', cancelled:'لغو'};
+    var h = items.map(function(inv) {
+      var cls = stColors[inv.status] || 'gray';
+      var remain = (inv.total_amount || 0) - (inv.paid_amount || 0);
+      return '<div class="list-item">'
+        +'<div class="li-icon" style="background:var(--'+cls+'-l)">🧾</div>'
+        +'<div class="li-body">'
+          +'<div class="li-title">'+(inv.invoice_number||inv.number||'#')+'</div>'
+          +'<div class="li-sub">'+esc(inv.customer_name||inv.person_name||'')+'</div>'
+        +'</div>'
+        +'<div class="li-right">'
+          +'<div class="li-amount" style="color:var(--'+cls+')">'+fmt(inv.total_amount||0)+'</div>'
+          +(remain>0 ? '<span class="li-badge badge-red">مانده '+fmt(remain)+'</span>' : '<span class="li-badge badge-'+cls+'">'+(stNames[inv.status]||inv.status)+'</span>')
+        +'</div>'
+        +'</div>';
+    }).join('');
+    document.getElementById('invList').innerHTML = h;
+  })
+  .catch(() => { document.getElementById('invList').innerHTML = empty('خطا در بارگذاری'); });
+}
+
+// ── HR ───────────────────────────────────────────────────────
+function loadHr() {
+  document.getElementById('hrList').innerHTML = '<div class="skeleton skel-card"></div><div class="skeleton skel-card"></div>';
+  api('/hr/leaves?status=pending&limit=20')
+  .then(d => {
+    if (!d.success || !d.data) { document.getElementById('hrList').innerHTML = empty('درخواستی یافت نشد'); return; }
+    var items = Array.isArray(d.data) ? d.data : (d.data.items || []);
+    if (!items.length) { document.getElementById('hrList').innerHTML = '<div class="list-item"><div class="li-body"><div class="li-title">✅ همه مرخصی‌ها بررسی شده‌اند</div></div></div>'; return; }
+    var h = items.map(function(lv) {
+      return '<div class="list-item">'
+        +'<div class="li-icon" style="background:var(--blue-l)">📅</div>'
+        +'<div class="li-body">'
+          +'<div class="li-title">'+esc(lv.user_name||lv.full_name||'—')+'</div>'
+          +'<div class="li-sub">'+(lv.start_date||'')+(lv.end_date?' تا '+lv.end_date:'')+'</div>'
+        +'</div>'
+        +'<div class="li-right">'
+          +'<span class="li-badge badge-amber">در انتظار</span>'
+        +'</div>'
+        +'</div>';
+    }).join('');
+    document.getElementById('hrList').innerHTML = h;
+  })
+  .catch(() => { document.getElementById('hrList').innerHTML = empty('خطا در بارگذاری'); });
+}
+
+function empty(msg) {
+  return '<div class="empty"><div class="ico">📭</div><div>'+msg+'</div></div>';
+}
+
+// ── Init ─────────────────────────────────────────────────────
+if (token) {
+  showApp();
+} else {
+  document.getElementById('loginScreen').classList.add('active');
+}
+
+// Register service worker
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+</script>
+</body>
+</html>

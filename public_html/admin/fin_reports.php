@@ -8,6 +8,10 @@ ob_start();
 session_start();
 require_once __DIR__ . '/../../includes/db.php';
 require_once __DIR__ . '/../../includes/functions.php';
+// بارگذاری PhpSpreadsheet برای خروجی Excel
+if (!class_exists('\PhpOffice\PhpSpreadsheet\Spreadsheet')) {
+    require_once __DIR__ . '/../../vendor/autoload.php';
+}
 
 // بررسی درخواست AJAX
 $isAjax = !empty($_SERVER['HTTP_X_REQUESTED_WITH'])
@@ -445,6 +449,194 @@ if ($isAjax) {
         exit;
     }
 
+    // ── خروجی Excel (xlsx) ────────────────────────────────────────
+    if ($action === 'export_xlsx') {
+        $reportType = $_GET['report_type'] ?? '';
+        $fyId       = (int)($_GET['fiscal_year_id'] ?? 0);
+
+        // تابع کمکی: تبدیل شماره ستون (عدد) + شماره سطر به مختصات اکسل مانند A1
+        $coord = static function(int $col, int $row): string {
+            return \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col) . $row;
+        };
+
+        $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+
+        // جهت RTL برای محتوای فارسی
+        $sheet->setRightToLeft(true);
+
+        try {
+            if ($reportType === 'sales') {
+                // ── فروش ماهانه ──
+                $sheet->setTitle('فروش ماهانه');
+                $headers = ['ماه', 'فروش کل', 'وصولی', 'مانده'];
+                foreach ($headers as $i => $h) {
+                    $sheet->setCellValue($coord($i + 1, 1), $h);
+                }
+                $sheet->getStyle('A1:D1')->getFont()->setBold(true);
+
+                $params = [];
+                $where  = "type = 'sell' AND is_deleted = 0";
+                if ($fyId > 0) { $where .= ' AND fiscal_year_id = ?'; $params[] = $fyId; }
+                $st = $pdo->prepare(
+                    "SELECT SUBSTRING(invoice_date,1,7) AS month, SUM(total_amount) AS total,
+                            SUM(paid_amount) AS paid
+                     FROM fin_invoices WHERE $where
+                     GROUP BY SUBSTRING(invoice_date,1,7) ORDER BY 1"
+                );
+                $st->execute($params);
+                $row = 2;
+                foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                    $outstanding = (int)$r['total'] - (int)$r['paid'];
+                    $sheet->setCellValue($coord(1, $row), $r['month']);
+                    $sheet->setCellValue($coord(2, $row), (int)$r['total']);
+                    $sheet->setCellValue($coord(3, $row), (int)$r['paid']);
+                    $sheet->setCellValue($coord(4, $row), $outstanding);
+                    $row++;
+                }
+                if ($row > 2) {
+                    $sheet->getStyle('B2:D' . ($row - 1))->getNumberFormat()->setFormatCode('#,##0');
+                }
+
+            } elseif ($reportType === 'trial_balance') {
+                // ── تراز آزمایشی ──
+                $sheet->setTitle('تراز آزمایشی');
+                $headers = ['کد', 'نام حساب', 'نوع', 'بدهکار', 'بستانکار', 'مانده'];
+                foreach ($headers as $i => $h) {
+                    $sheet->setCellValue($coord($i + 1, 1), $h);
+                }
+                $sheet->getStyle('A1:F1')->getFont()->setBold(true);
+
+                $params    = [];
+                $joinWhere = '';
+                if ($fyId > 0) { $joinWhere = 'AND d.fiscal_year_id = ?'; $params[] = $fyId; }
+                $st = $pdo->prepare(
+                    "SELECT a.code, a.name, a.type,
+                            COALESCE(SUM(r.debit),0) AS total_debit,
+                            COALESCE(SUM(r.credit),0) AS total_credit,
+                            COALESCE(SUM(r.debit),0)-COALESCE(SUM(r.credit),0) AS balance
+                     FROM fin_chart_of_accounts a
+                     LEFT JOIN fin_doc_rows r ON r.account_id=a.id
+                     LEFT JOIN fin_docs d ON d.id=r.doc_id $joinWhere
+                     GROUP BY a.id ORDER BY a.code"
+                );
+                $st->execute($params);
+                $typeMap = ['asset' => 'دارایی', 'liability' => 'بدهی', 'equity' => 'حقوق صاحبان', 'revenue' => 'درآمد', 'expense' => 'هزینه'];
+                $row = 2;
+                foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                    $sheet->setCellValue($coord(1, $row), $r['code']);
+                    $sheet->setCellValue($coord(2, $row), $r['name']);
+                    $sheet->setCellValue($coord(3, $row), $typeMap[$r['type']] ?? $r['type']);
+                    $sheet->setCellValue($coord(4, $row), (int)$r['total_debit']);
+                    $sheet->setCellValue($coord(5, $row), (int)$r['total_credit']);
+                    $sheet->setCellValue($coord(6, $row), (int)$r['balance']);
+                    $row++;
+                }
+                if ($row > 2) {
+                    $sheet->getStyle('D2:F' . ($row - 1))->getNumberFormat()->setFormatCode('#,##0');
+                }
+
+            } elseif ($reportType === 'invoice_aging') {
+                // ── مطالبات معوق ──
+                $sheet->setTitle('مطالبات معوق');
+                $headers = ['شماره فاکتور', 'مشتری', 'تاریخ', 'مبلغ کل', 'پرداخت‌شده', 'مانده', 'روز تأخیر'];
+                foreach ($headers as $i => $h) {
+                    $sheet->setCellValue($coord($i + 1, 1), $h);
+                }
+                $sheet->getStyle('A1:G1')->getFont()->setBold(true);
+
+                $params = [];
+                $andFy  = '';
+                if ($fyId > 0) { $andFy = 'AND i.fiscal_year_id = ?'; $params[] = $fyId; }
+                $st = $pdo->prepare(
+                    "SELECT i.invoice_number, COALESCE(p.name, i.customer_name, '') AS customer,
+                            i.invoice_date, i.total_amount, i.paid_amount,
+                            i.total_amount - i.paid_amount AS outstanding,
+                            DATEDIFF(CURDATE(), STR_TO_DATE(CONCAT(REPLACE(SUBSTRING(i.invoice_date,1,7),'/','-'),'-01'),'%Y-%m-%d')) AS age_days
+                     FROM fin_invoices i LEFT JOIN fin_persons p ON i.person_id=p.id
+                     WHERE i.type='sell' AND i.paid_amount < i.total_amount AND i.is_deleted=0 $andFy
+                     ORDER BY age_days DESC"
+                );
+                $st->execute($params);
+                $row = 2;
+                foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                    $sheet->setCellValue($coord(1, $row), $r['invoice_number']);
+                    $sheet->setCellValue($coord(2, $row), $r['customer']);
+                    $sheet->setCellValue($coord(3, $row), $r['invoice_date']);
+                    $sheet->setCellValue($coord(4, $row), (int)$r['total_amount']);
+                    $sheet->setCellValue($coord(5, $row), (int)$r['paid_amount']);
+                    $sheet->setCellValue($coord(6, $row), (int)$r['outstanding']);
+                    $sheet->setCellValue($coord(7, $row), (int)$r['age_days']);
+                    $row++;
+                }
+                if ($row > 2) {
+                    $sheet->getStyle('D2:F' . ($row - 1))->getNumberFormat()->setFormatCode('#,##0');
+                }
+
+            } elseif ($reportType === 'cheque_report') {
+                // ── گزارش چک ──
+                $sheet->setTitle('گزارش چک');
+                $headers = ['شماره چک', 'نوع', 'بانک', 'مبلغ', 'طرف حساب', 'صادر', 'سررسید', 'وضعیت'];
+                foreach ($headers as $i => $h) {
+                    $sheet->setCellValue($coord($i + 1, 1), $h);
+                }
+                $sheet->getStyle('A1:H1')->getFont()->setBold(true);
+
+                // بررسی وجود ستون person_name
+                $extraName = '';
+                try {
+                    $colSt = $pdo->query("DESCRIBE fin_cheques");
+                    foreach ($colSt->fetchAll(PDO::FETCH_ASSOC) as $col) {
+                        if ($col['Field'] === 'person_name') { $extraName = ", c.person_name"; break; }
+                    }
+                } catch (Throwable $e2) {}
+
+                $st = $pdo->prepare(
+                    "SELECT c.cheque_number, c.type, c.bank_name,
+                            c.amount, COALESCE(p.name $extraName, '') AS pname,
+                            c.issue_date, c.due_date, c.status
+                     FROM fin_cheques c LEFT JOIN fin_persons p ON c.person_id=p.id
+                     WHERE c.is_deleted=0 ORDER BY c.due_date"
+                );
+                $st->execute();
+                $typeMap   = ['received' => 'دریافتنی', 'issued' => 'پرداختنی'];
+                $statusMap = ['pending' => 'در جریان', 'cleared' => 'وصول شده', 'bounced' => 'برگشتی', 'transferred' => 'منتقل‌شده'];
+                $row = 2;
+                foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                    $sheet->setCellValue($coord(1, $row), $r['cheque_number']);
+                    $sheet->setCellValue($coord(2, $row), $typeMap[$r['type']] ?? $r['type']);
+                    $sheet->setCellValue($coord(3, $row), $r['bank_name']);
+                    $sheet->setCellValue($coord(4, $row), (int)$r['amount']);
+                    $sheet->setCellValue($coord(5, $row), $r['pname']);
+                    $sheet->setCellValue($coord(6, $row), $r['issue_date']);
+                    $sheet->setCellValue($coord(7, $row), $r['due_date']);
+                    $sheet->setCellValue($coord(8, $row), $statusMap[$r['status']] ?? $r['status']);
+                    $row++;
+                }
+                if ($row > 2) {
+                    $sheet->getStyle('D2:D' . ($row - 1))->getNumberFormat()->setFormatCode('#,##0');
+                }
+            }
+        } catch (Throwable $e) {
+            $sheet->setCellValue('A1', 'خطا در تهیه گزارش: ' . $e->getMessage());
+        }
+
+        // تنظیم عرض ستون‌ها به صورت خودکار
+        foreach (range('A', 'H') as $col) {
+            $sheet->getColumnDimension($col)->setAutoSize(true);
+        }
+
+        // پاکسازی بافر و ارسال فایل
+        ob_clean();
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment; filename="report_' . $reportType . '_' . date('Ymd') . '.xlsx"');
+        header('Cache-Control: max-age=0');
+
+        $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+        $writer->save('php://output');
+        exit;
+    }
+
     // ── ترازنامه (Balance Sheet) ───────────────────────────────────
     if ($action === 'balance_sheet') {
         $assets      = [];
@@ -709,6 +901,9 @@ include __DIR__ . '/../../templates/header.php';
 /* ── خروجی CSV ── */
 .btn-csv { background: #059669; color: #fff; border: none; border-radius: 10px; padding: 9px 18px; font-family: inherit; font-size: .88rem; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: background .2s; margin-bottom: 16px; }
 .btn-csv:hover { background: #047857; }
+/* ── خروجی Excel (xlsx) ── */
+.btn-xlsx { background: #1d6f42; color: #fff; border: none; border-radius: 10px; padding: 9px 18px; font-family: inherit; font-size: .88rem; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: background .2s; margin-bottom: 16px; }
+.btn-xlsx:hover { background: #155534; }
 
 /* ── فیلتر گزارش چک ── */
 .cheque-filters { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
@@ -866,8 +1061,11 @@ include __DIR__ . '/../../templates/header.php';
     <div class="rep-panel" id="panel-2">
         <div id="pnlLoading" class="rep-loading"><i class="fas fa-spinner"></i>در حال بارگذاری...</div>
         <div id="pnlContent" style="display:none">
-            <div style="margin-bottom:12px">
+            <div style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap">
                 <button class="btn-csv" onclick="exportCsv('sales')">
+                    <i class="fas fa-file-csv"></i> خروجی CSV
+                </button>
+                <button class="btn-xlsx" onclick="exportXlsx('sales')">
                     <i class="fas fa-file-excel"></i> خروجی Excel
                 </button>
             </div>
@@ -889,8 +1087,11 @@ include __DIR__ . '/../../templates/header.php';
     <div class="rep-panel" id="panel-3">
         <div id="tbLoading" class="rep-loading"><i class="fas fa-spinner"></i>در حال بارگذاری...</div>
         <div id="tbContent" style="display:none">
-            <div style="margin-bottom:12px">
+            <div style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap">
                 <button class="btn-csv" onclick="exportCsv('trial_balance')">
+                    <i class="fas fa-file-csv"></i> خروجی CSV
+                </button>
+                <button class="btn-xlsx" onclick="exportXlsx('trial_balance')">
                     <i class="fas fa-file-excel"></i> خروجی Excel
                 </button>
             </div>
@@ -937,7 +1138,7 @@ include __DIR__ . '/../../templates/header.php';
                 <i class="fas fa-search"></i> نمایش دفتر
             </button>
             <button class="btn-csv" onclick="exportCsv('ledger')" style="margin:0">
-                <i class="fas fa-file-excel"></i> خروجی Excel
+                <i class="fas fa-file-csv"></i> خروجی CSV
             </button>
         </div>
         <div id="ledgerLoading" class="rep-loading" style="display:none"><i class="fas fa-spinner"></i>در حال بارگذاری...</div>
@@ -958,6 +1159,9 @@ include __DIR__ . '/../../templates/header.php';
             <div style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
                 <div class="rep-summary-cards" style="margin:0;grid-template-columns:repeat(3,auto);gap:12px" id="agingSummary"></div>
                 <button class="btn-csv" onclick="exportCsv('aging')" style="margin:0">
+                    <i class="fas fa-file-csv"></i> خروجی CSV
+                </button>
+                <button class="btn-xlsx" onclick="exportXlsx('invoice_aging')" style="margin:0">
                     <i class="fas fa-file-excel"></i> خروجی Excel
                 </button>
             </div>
@@ -1001,6 +1205,9 @@ include __DIR__ . '/../../templates/header.php';
                     <option value="transferred">منتقل‌شده</option>
                 </select>
                 <button class="btn-csv" onclick="exportCsv('cheques')">
+                    <i class="fas fa-file-csv"></i> خروجی CSV
+                </button>
+                <button class="btn-xlsx" onclick="exportXlsx('cheque_report')">
                     <i class="fas fa-file-excel"></i> خروجی Excel
                 </button>
             </div>
@@ -1807,10 +2014,18 @@ function exportCsv(type) {
     window.location.href = `fin_reports.php?action=export_csv&report_type=${encodeURIComponent(type)}&fiscal_year_id=${fyId}`;
 }
 
-// خروجی CSV بر اساس تب جاری
+// ══════════════════════════════════════════════════════════════════
+// خروجی Excel (xlsx)
+// ══════════════════════════════════════════════════════════════════
+function exportXlsx(type) {
+    const fyId = getFyId();
+    window.location.href = `fin_reports.php?action=export_xlsx&report_type=${encodeURIComponent(type)}&fiscal_year_id=${fyId}`;
+}
+
+// خروجی بر اساس تب جاری — دکمه هدر صفحه
 function exportCurrentTab() {
-    const map = {1:'sales', 2:'sales', 3:'trial_balance', 4:'ledger', 5:'aging', 6:'cheques', 7:'trial_balance', 8:'sales'};
-    exportCsv(map[activeTab] || 'sales');
+    const xlsxMap = {1:'sales', 2:'sales', 3:'trial_balance', 4:'trial_balance', 5:'invoice_aging', 6:'cheque_report', 7:'trial_balance', 8:'sales'};
+    exportXlsx(xlsxMap[activeTab] || 'sales');
 }
 
 // ══════════════════════════════════════════════════════════════════
