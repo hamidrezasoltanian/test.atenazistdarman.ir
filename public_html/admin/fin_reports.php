@@ -445,6 +445,150 @@ if ($isAjax) {
         exit;
     }
 
+    // ── ترازنامه (Balance Sheet) ───────────────────────────────────
+    if ($action === 'balance_sheet') {
+        $assets      = [];
+        $liabilities = [];
+        $equity      = [];
+        try {
+            $params    = [];
+            $joinWhere = '';
+            if ($fyId > 0) {
+                $joinWhere = 'AND d.fiscal_year_id = ?';
+                $params[]  = $fyId;
+            }
+            $st = $pdo->prepare(
+                "SELECT a.id, a.code, a.name, a.type,
+                        COALESCE(SUM(r.bd),0) AS total_debit,
+                        COALESCE(SUM(r.bs),0) AS total_credit,
+                        COALESCE(SUM(r.bd),0) - COALESCE(SUM(r.bs),0) AS balance
+                 FROM fin_chart_of_accounts a
+                 LEFT JOIN fin_doc_rows r ON r.account_id = a.id
+                 LEFT JOIN fin_docs d ON d.id = r.doc_id $joinWhere
+                 WHERE a.is_deleted = 0
+                 GROUP BY a.id
+                 ORDER BY a.code"
+            );
+            $st->execute($params);
+            $rows = $st->fetchAll(PDO::FETCH_ASSOC);
+
+            foreach ($rows as $row) {
+                $bal = (float)$row['balance'];
+                $item = [
+                    'id'      => (int)$row['id'],
+                    'code'    => $row['code'],
+                    'name'    => $row['name'],
+                    'type'    => $row['type'],
+                    'balance' => 0,
+                ];
+                if ($row['type'] === 'asset') {
+                    if ($bal > 0) {
+                        $item['balance'] = (int)$bal;
+                        $assets[] = $item;
+                    }
+                } elseif ($row['type'] === 'liability') {
+                    if ($bal < 0) {
+                        $item['balance'] = (int)abs($bal);
+                        $liabilities[] = $item;
+                    }
+                } elseif ($row['type'] === 'equity') {
+                    if ($bal < 0) {
+                        $item['balance'] = (int)abs($bal);
+                        $equity[] = $item;
+                    }
+                }
+            }
+        } catch (Throwable $e) {}
+
+        $totalAssets = array_sum(array_column($assets, 'balance'));
+        $totalLE     = array_sum(array_column($liabilities, 'balance')) + array_sum(array_column($equity, 'balance'));
+
+        echo json_encode([
+            'ok'                    => true,
+            'assets'                => $assets,
+            'liabilities'           => $liabilities,
+            'equity'                => $equity,
+            'total_assets'          => $totalAssets,
+            'total_liabilities_equity' => $totalLE,
+        ]);
+        exit;
+    }
+
+    // ── مقایسه دوره‌ای ─────────────────────────────────────────────
+    if ($action === 'period_comparison') {
+        $year1  = (int)($_GET['year1']  ?? 0);
+        $month1 = (int)($_GET['month1'] ?? 0);
+        $year2  = (int)($_GET['year2']  ?? 0);
+        $month2 = (int)($_GET['month2'] ?? 0);
+
+        if (!$year1 || !$month1 || !$year2 || !$month2) {
+            echo json_encode(['ok' => false, 'msg' => 'پارامترهای دوره ناقص است']);
+            exit;
+        }
+
+        $calcPeriod = function(PDO $pdo, int $year, int $month): array {
+            $data = [
+                'revenue'       => 0,
+                'paid'          => 0,
+                'expenses'      => 0,
+                'invoice_count' => 0,
+                'new_cheques'   => 0,
+            ];
+            try {
+                // درآمد و وصولی فاکتور فروش
+                $st = $pdo->prepare(
+                    "SELECT COALESCE(SUM(total_amount),0) AS rev,
+                            COALESCE(SUM(paid_amount),0)  AS paid,
+                            COUNT(*) AS cnt
+                     FROM fin_invoices
+                     WHERE type='sell' AND status != 'cancelled' AND is_deleted=0
+                       AND YEAR(invoice_date)=? AND MONTH(invoice_date)=?"
+                );
+                $st->execute([$year, $month]);
+                $row = $st->fetch(PDO::FETCH_ASSOC);
+                $data['revenue']       = (int)$row['rev'];
+                $data['paid']          = (int)$row['paid'];
+                $data['invoice_count'] = (int)$row['cnt'];
+            } catch (Throwable $e) {}
+
+            try {
+                // هزینه‌ها
+                $st2 = $pdo->prepare(
+                    "SELECT COALESCE(SUM(amount),0) AS total
+                     FROM fin_expenses
+                     WHERE is_deleted=0
+                       AND YEAR(expense_date)=? AND MONTH(expense_date)=?"
+                );
+                $st2->execute([$year, $month]);
+                $data['expenses'] = (int)$st2->fetchColumn();
+            } catch (Throwable $e) {}
+
+            try {
+                // چک‌های دریافتی جدید
+                $st3 = $pdo->prepare(
+                    "SELECT COALESCE(SUM(amount),0) AS total
+                     FROM fin_cheques
+                     WHERE type='received' AND is_deleted=0
+                       AND YEAR(issue_date)=? AND MONTH(issue_date)=?"
+                );
+                $st3->execute([$year, $month]);
+                $data['new_cheques'] = (int)$st3->fetchColumn();
+            } catch (Throwable $e) {}
+
+            return $data;
+        };
+
+        $period1 = $calcPeriod($pdo, $year1, $month1);
+        $period2 = $calcPeriod($pdo, $year2, $month2);
+
+        echo json_encode([
+            'ok'      => true,
+            'period1' => $period1,
+            'period2' => $period2,
+        ]);
+        exit;
+    }
+
     // اکشن ناشناخته
     echo json_encode(['ok' => false, 'msg' => 'اکشن نامعتبر']);
     exit;
@@ -583,6 +727,38 @@ include __DIR__ . '/../../templates/header.php';
 .cheque-sum-item { display: flex; flex-direction: column; gap: 4px; }
 .cheque-sum-item .cs-label { font-size: .8rem; color: #64748b; }
 .cheque-sum-item .cs-val   { font-size: 1.1rem; font-weight: 700; color: #4f46e5; }
+
+/* ── ترازنامه ── */
+.bs-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+@media (max-width:768px) { .bs-grid { grid-template-columns: 1fr; } }
+.bs-section-title { font-size: 1rem; font-weight: 700; color: #1e293b; padding: 12px 16px; border-radius: 10px 10px 0 0; display: flex; align-items: center; gap: 8px; }
+.bs-section-title.asset-title    { background: #eff6ff; color: #2563eb; border-bottom: 2px solid #bfdbfe; }
+.bs-section-title.liab-title     { background: #fef3c7; color: #92400e; border-bottom: 2px solid #fde68a; }
+.bs-total-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; font-weight: 700; font-size: .95rem; border-top: 2px solid #e2e8f0; margin-top: 4px; }
+.bs-total-row.asset-total { color: #2563eb; }
+.bs-total-row.liab-total  { color: #92400e; }
+.bs-balance-status { display: flex; align-items: center; gap: 10px; padding: 14px 20px; border-radius: 12px; margin-top: 20px; font-size: 1rem; font-weight: 600; }
+.bs-balance-status.ok  { background: #ecfdf5; color: #059669; border: 1px solid #a7f3d0; }
+.bs-balance-status.bad { background: #fef2f2; color: #dc2626; border: 1px solid #fca5a5; }
+
+/* ── مقایسه دوره‌ای ── */
+.period-controls { background: #fff; border-radius: 14px; padding: 20px 24px; box-shadow: 0 2px 10px rgba(0,0,0,.05); border: 1px solid #e2e8f0; margin-bottom: 20px; display: flex; gap: 20px; align-items: flex-end; flex-wrap: wrap; }
+.period-group { display: flex; flex-direction: column; gap: 6px; }
+.period-group label { font-size: .82rem; font-weight: 600; color: #475569; }
+.period-inputs { display: flex; gap: 8px; }
+.period-year-input  { border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 12px; font-family: inherit; font-size: .9rem; width: 90px; outline: none; color: #1e293b; }
+.period-month-select { border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 12px; font-family: inherit; font-size: .9rem; outline: none; color: #1e293b; }
+.btn-compare { background: #7c3aed; color: #fff; border: none; border-radius: 10px; padding: 10px 22px; font-family: inherit; font-size: .9rem; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: background .2s; }
+.btn-compare:hover { background: #5b21b6; }
+.cmp-table-wrap { background: #fff; border-radius: 14px; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,.05); border: 1px solid #e2e8f0; overflow-x: auto; }
+.cmp-table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+.cmp-table th { background: #f8fafc; color: #475569; font-weight: 600; padding: 13px 16px; text-align: right; border-bottom: 2px solid #e2e8f0; }
+.cmp-table td { padding: 12px 16px; border-bottom: 1px solid #f1f5f9; color: #334155; }
+.cmp-table tr:hover td { background: #fafbfc; }
+.cmp-table .metric-col { font-weight: 600; color: #1e293b; }
+.cmp-positive { color: #059669; font-weight: 700; }
+.cmp-negative { color: #dc2626; font-weight: 700; }
+.cmp-neutral  { color: #64748b; font-weight: 600; }
 </style>
 
 <div class="rep-page fin-page">
@@ -628,6 +804,12 @@ include __DIR__ . '/../../templates/header.php';
         </button>
         <button class="rep-tab-btn" onclick="switchTab(6)" id="tab-btn-6">
             <i class="fas fa-money-check-alt"></i> گزارش چک
+        </button>
+        <button class="rep-tab-btn" onclick="switchTab(7)" id="tab-btn-7">
+            <i class="fas fa-landmark"></i> ترازنامه
+        </button>
+        <button class="rep-tab-btn" onclick="switchTab(8)" id="tab-btn-8">
+            <i class="fas fa-exchange-alt"></i> مقایسه دوره‌ای
         </button>
     </div>
 
@@ -842,6 +1024,76 @@ include __DIR__ . '/../../templates/header.php';
         </div>
     </div>
 
+
+    <!-- ════════════════════════════════════════════════════
+         پانل ۷ — ترازنامه
+    ════════════════════════════════════════════════════ -->
+    <div class="rep-panel" id="panel-7">
+        <div id="bsLoading" class="rep-loading"><i class="fas fa-spinner"></i>در حال بارگذاری...</div>
+        <div id="bsContent" style="display:none">
+            <div id="bsBalanceStatus"></div>
+            <div class="bs-grid" id="bsGrid"></div>
+        </div>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════
+         پانل ۸ — مقایسه دوره‌ای
+    ════════════════════════════════════════════════════ -->
+    <div class="rep-panel" id="panel-8">
+        <div class="period-controls">
+            <div class="period-group">
+                <label>دوره اول (سال و ماه میلادی)</label>
+                <div class="period-inputs">
+                    <input type="number" class="period-year-input" id="cmpYear1" placeholder="مثلاً ۲۰۲۴" min="2000" max="2100" value="<?= date('Y') ?>">
+                    <select class="period-month-select" id="cmpMonth1">
+                        <option value="1">فروردین / ژانویه</option>
+                        <option value="2">اردیبهشت / فوریه</option>
+                        <option value="3">خرداد / مارس</option>
+                        <option value="4">تیر / آوریل</option>
+                        <option value="5">مرداد / مه</option>
+                        <option value="6">شهریور / ژوئن</option>
+                        <option value="7">مهر / جولای</option>
+                        <option value="8">آبان / اوت</option>
+                        <option value="9">آذر / سپتامبر</option>
+                        <option value="10">دی / اکتبر</option>
+                        <option value="11">بهمن / نوامبر</option>
+                        <option value="12">اسفند / دسامبر</option>
+                    </select>
+                </div>
+            </div>
+            <div class="period-group">
+                <label>دوره دوم (سال و ماه میلادی)</label>
+                <div class="period-inputs">
+                    <input type="number" class="period-year-input" id="cmpYear2" placeholder="مثلاً ۲۰۲۴" min="2000" max="2100" value="<?= date('Y') ?>">
+                    <select class="period-month-select" id="cmpMonth2">
+                        <option value="1">فروردین / ژانویه</option>
+                        <option value="2">اردیبهشت / فوریه</option>
+                        <option value="3">خرداد / مارس</option>
+                        <option value="4">تیر / آوریل</option>
+                        <option value="5">مرداد / مه</option>
+                        <option value="6">شهریور / ژوئن</option>
+                        <option value="7">مهر / جولای</option>
+                        <option value="8">آبان / اوت</option>
+                        <option value="9">آذر / سپتامبر</option>
+                        <option value="10">دی / اکتبر</option>
+                        <option value="11">بهمن / نوامبر</option>
+                        <option value="12">اسفند / دسامبر</option>
+                    </select>
+                </div>
+            </div>
+            <button class="btn-compare" onclick="loadPeriodComparison()">
+                <i class="fas fa-chart-line"></i> مقایسه
+            </button>
+        </div>
+        <div id="cmpLoading" class="rep-loading" style="display:none"><i class="fas fa-spinner"></i>در حال بارگذاری...</div>
+        <div id="cmpContent">
+            <div style="text-align:center;padding:60px 20px;color:#94a3b8;">
+                <i class="fas fa-exchange-alt" style="font-size:3rem;display:block;margin-bottom:12px"></i>
+                دو دوره را انتخاب کنید و روی «مقایسه» کلیک کنید.
+            </div>
+        </div>
+    </div>
+
 </div><!-- /rep-page -->
 
 <script>
@@ -919,6 +1171,8 @@ function switchTab(n, forceReload) {
         else if (n === 4) { /* دفتر حساب — منتظر انتخاب کاربر */ }
         else if (n === 5) loadAging(fy);
         else if (n === 6) loadCheques();
+        else if (n === 7) loadBalanceSheet(fy);
+        else if (n === 8) { /* مقایسه دوره‌ای — منتظر انتخاب کاربر */ }
     }
 }
 
@@ -1370,6 +1624,182 @@ function loadCheques() {
 }
 
 // ══════════════════════════════════════════════════════════════════
+// تب ۷ — ترازنامه
+// ══════════════════════════════════════════════════════════════════
+function loadBalanceSheet(fyId) {
+    document.getElementById('bsLoading').style.display = '';
+    document.getElementById('bsContent').style.display = 'none';
+
+    fetch('fin_reports.php?action=balance_sheet&fiscal_year_id=' + fyId, {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    })
+    .then(r => r.json())
+    .then(res => {
+        document.getElementById('bsLoading').style.display = 'none';
+        document.getElementById('bsContent').style.display = '';
+        if (!res.ok) return;
+
+        // ── ساخت ردیف‌های جدول ──
+        function buildBsTable(items, rowCls) {
+            if (!items || items.length === 0) {
+                return '<tr><td colspan="3" style="text-align:center;color:#94a3b8;padding:20px">موردی یافت نشد</td></tr>';
+            }
+            return items.map(it => `<tr>
+                <td><code style="font-size:.8rem">${it.code}</code></td>
+                <td>${it.name}</td>
+                <td class="${rowCls}" style="direction:ltr;text-align:left;font-weight:600">${numFa(it.balance)}</td>
+            </tr>`).join('');
+        }
+
+        const totalA  = res.total_assets;
+        const totalLE = res.total_liabilities_equity;
+        const isBalanced = (totalA === totalLE);
+
+        // ── ستون دارایی‌ها ──
+        const assetHtml = `
+            <div class="rep-table-wrap" style="padding:0">
+                <div class="bs-section-title asset-title">
+                    <i class="fas fa-cubes"></i> دارایی‌ها
+                </div>
+                <table class="rep-table">
+                    <thead><tr>
+                        <th>کد</th><th>نام حساب</th><th>مانده (تومان)</th>
+                    </tr></thead>
+                    <tbody>${buildBsTable(res.assets, 'debit-balance')}</tbody>
+                </table>
+                <div class="bs-total-row asset-total">
+                    <span>جمع دارایی‌ها</span>
+                    <span style="direction:ltr">${numFa(totalA)}</span>
+                </div>
+            </div>`;
+
+        // ── ستون بدهی‌ها + حقوق ──
+        const liabRows   = buildBsTable(res.liabilities, 'credit-balance');
+        const equityRows = buildBsTable(res.equity, 'credit-balance');
+        const liabHtml = `
+            <div class="rep-table-wrap" style="padding:0">
+                <div class="bs-section-title liab-title">
+                    <i class="fas fa-file-invoice-dollar"></i> بدهی‌ها و حقوق صاحبان
+                </div>
+                <table class="rep-table">
+                    <thead><tr>
+                        <th>کد</th><th>نام حساب</th><th>مانده (تومان)</th>
+                    </tr></thead>
+                    <tbody>
+                        ${res.liabilities.length > 0 ? '<tr><td colspan="3" style="background:#fffbeb;font-weight:700;padding:8px 14px;font-size:.82rem;color:#92400e">بدهی‌ها</td></tr>' + liabRows : ''}
+                        ${res.equity.length > 0 ? '<tr><td colspan="3" style="background:#faf5ff;font-weight:700;padding:8px 14px;font-size:.82rem;color:#6b21a8">حقوق صاحبان سهام</td></tr>' + equityRows : ''}
+                    </tbody>
+                </table>
+                <div class="bs-total-row liab-total">
+                    <span>جمع بدهی‌ها + حقوق</span>
+                    <span style="direction:ltr">${numFa(totalLE)}</span>
+                </div>
+            </div>`;
+
+        document.getElementById('bsGrid').innerHTML = assetHtml + liabHtml;
+
+        // ── وضعیت تراز ──
+        if (isBalanced) {
+            document.getElementById('bsBalanceStatus').innerHTML =
+                '<div class="bs-balance-status ok"><i class="fas fa-check-circle"></i> ترازنامه متعادل است ✅</div>';
+        } else {
+            const diff = Math.abs(totalA - totalLE);
+            document.getElementById('bsBalanceStatus').innerHTML =
+                `<div class="bs-balance-status bad"><i class="fas fa-exclamation-triangle"></i> عدم تراز ⚠️ — اختلاف: ${numFa(diff)} تومان</div>`;
+        }
+    })
+    .catch(() => {
+        document.getElementById('bsLoading').innerHTML = '<span style="color:#ef4444">خطا در بارگذاری</span>';
+    });
+}
+
+// ══════════════════════════════════════════════════════════════════
+// تب ۸ — مقایسه دوره‌ای
+// ══════════════════════════════════════════════════════════════════
+function loadPeriodComparison() {
+    const year1  = parseInt(document.getElementById('cmpYear1').value)  || 0;
+    const month1 = parseInt(document.getElementById('cmpMonth1').value) || 0;
+    const year2  = parseInt(document.getElementById('cmpYear2').value)  || 0;
+    const month2 = parseInt(document.getElementById('cmpMonth2').value) || 0;
+
+    if (!year1 || !year2) {
+        alert('لطفاً سال هر دو دوره را وارد کنید.');
+        return;
+    }
+
+    document.getElementById('cmpLoading').style.display = '';
+    document.getElementById('cmpContent').innerHTML = '';
+
+    const url = `fin_reports.php?action=period_comparison&year1=${year1}&month1=${month1}&year2=${year2}&month2=${month2}`;
+    fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+    .then(r => r.json())
+    .then(res => {
+        document.getElementById('cmpLoading').style.display = 'none';
+        if (!res.ok) {
+            document.getElementById('cmpContent').innerHTML = `<p style="color:#ef4444;text-align:center">${res.msg || 'خطا'}</p>`;
+            return;
+        }
+
+        // ── برچسب دوره‌ها ──
+        const monthNames = ['','ژانویه','فوریه','مارس','آوریل','مه','ژوئن','جولای','اوت','سپتامبر','اکتبر','نوامبر','دسامبر'];
+        const lbl1 = `${monthNames[month1] || month1} ${year1}`;
+        const lbl2 = `${monthNames[month2] || month2} ${year2}`;
+
+        const p1 = res.period1;
+        const p2 = res.period2;
+
+        // ── تابع نمایش تغییر درصدی ──
+        function deltaPct(v1, v2) {
+            if (v1 === 0 && v2 === 0) return '<span class="cmp-neutral">—</span>';
+            if (v1 === 0) return '<span class="cmp-positive">جدید</span>';
+            const pct = ((v2 - v1) / v1 * 100).toFixed(1);
+            const cls = pct > 0 ? 'cmp-positive' : (pct < 0 ? 'cmp-negative' : 'cmp-neutral');
+            const sign = pct > 0 ? '+' : '';
+            return `<span class="${cls}">${sign}${numFa(pct)}٪</span>`;
+        }
+
+        // ── معیارها ──
+        const metrics = [
+            { label: 'فروش کل (تومان)',      k: 'revenue',       money: true },
+            { label: 'وصولی (تومان)',         k: 'paid',          money: true },
+            { label: 'هزینه‌ها (تومان)',      k: 'expenses',      money: true },
+            { label: 'تعداد فاکتور',          k: 'invoice_count', money: false },
+            { label: 'چک دریافتی (تومان)',    k: 'new_cheques',   money: true },
+        ];
+
+        let tbody = '';
+        metrics.forEach(m => {
+            const v1 = parseInt(p1[m.k]) || 0;
+            const v2 = parseInt(p2[m.k]) || 0;
+            const fmt = m.money ? moneyFa : numFa;
+            tbody += `<tr>
+                <td class="metric-col">${m.label}</td>
+                <td style="direction:ltr;text-align:left">${fmt(v1)}</td>
+                <td style="direction:ltr;text-align:left">${fmt(v2)}</td>
+                <td>${deltaPct(v1, v2)}</td>
+            </tr>`;
+        });
+
+        document.getElementById('cmpContent').innerHTML = `
+            <div class="cmp-table-wrap">
+                <table class="cmp-table">
+                    <thead><tr>
+                        <th>شاخص</th>
+                        <th>${lbl1}</th>
+                        <th>${lbl2}</th>
+                        <th>تغییر (Δ٪)</th>
+                    </tr></thead>
+                    <tbody>${tbody}</tbody>
+                </table>
+            </div>`;
+    })
+    .catch(() => {
+        document.getElementById('cmpLoading').style.display = 'none';
+        document.getElementById('cmpContent').innerHTML = '<p style="color:#ef4444;text-align:center">خطا در بارگذاری مقایسه.</p>';
+    });
+}
+
+// ══════════════════════════════════════════════════════════════════
 // خروجی CSV
 // ══════════════════════════════════════════════════════════════════
 function exportCsv(type) {
@@ -1379,7 +1809,7 @@ function exportCsv(type) {
 
 // خروجی CSV بر اساس تب جاری
 function exportCurrentTab() {
-    const map = {1:'sales', 2:'sales', 3:'trial_balance', 4:'ledger', 5:'aging', 6:'cheques'};
+    const map = {1:'sales', 2:'sales', 3:'trial_balance', 4:'ledger', 5:'aging', 6:'cheques', 7:'trial_balance', 8:'sales'};
     exportCsv(map[activeTab] || 'sales');
 }
 

@@ -155,6 +155,93 @@ if ($isAjax) {
         exit;
     }
 
+    // ── ارزش‌گذاری FIFO ────────────────────────────────────────
+    if ($action === 'fifo_valuation') {
+        $stuffId = (int)($_GET['stuff_id'] ?? 0);
+        if ($stuffId < 1) { echo json_encode(['ok'=>false,'message'=>'شناسه کالا نامعتبر']); exit; }
+
+        // اطلاعات پایه کالا
+        $stmtStuff = $pdo->prepare("SELECT s.id, s.stuff_name, s.stuff_code, s.unit
+            FROM stuffs s WHERE s.id = ? AND s.is_delete = 0");
+        $stmtStuff->execute([$stuffId]);
+        $stuff = $stmtStuff->fetch(PDO::FETCH_ASSOC);
+        if (!$stuff) { echo json_encode(['ok'=>false,'message'=>'کالا یافت نشد']); exit; }
+
+        // دریافت تمام حرکات تأیید‌شده به ترتیب زمانی صعودی
+        $stmtMov = $pdo->prepare("
+            SELECT t.type, t.ticket_date_g, t.id AS ticket_id, i.id AS item_id,
+                   i.qty, i.unit_price
+            FROM inv_ticket_items i
+            JOIN inv_tickets t ON t.id = i.ticket_id
+            WHERE i.stuff_id = ?
+              AND t.is_deleted = 0
+              AND t.status = 'confirmed'
+            ORDER BY t.ticket_date_g ASC, t.id ASC, i.id ASC
+        ");
+        $stmtMov->execute([$stuffId]);
+        $transactions = $stmtMov->fetchAll(PDO::FETCH_ASSOC);
+
+        // محاسبه FIFO — ساخت صف لایه‌ها
+        // رسید و مرجوعی = ورودی موجودی | حواله و انتقال = خروجی موجودی
+        $layers = []; // هر آیتم: ['qty_remaining' => float, 'unit_price' => float]
+
+        foreach ($transactions as $tx) {
+            $qty   = (float)$tx['qty'];
+            $price = (float)$tx['unit_price'];
+            $type  = $tx['type'];
+
+            if (in_array($type, ['receipt', 'return'])) {
+                // ورودی: افزودن لایه جدید
+                $layers[] = ['qty_remaining' => $qty, 'unit_price' => $price];
+
+            } elseif (in_array($type, ['dispatch', 'transfer'])) {
+                // خروجی: مصرف از ابتدای صف (FIFO)
+                $qtyToRemove = $qty;
+                while ($qtyToRemove > 0 && !empty($layers)) {
+                    if ($layers[0]['qty_remaining'] <= $qtyToRemove) {
+                        // لایه اول کاملاً مصرف می‌شود
+                        $qtyToRemove -= $layers[0]['qty_remaining'];
+                        array_shift($layers);
+                    } else {
+                        // بخشی از لایه اول مصرف می‌شود
+                        $layers[0]['qty_remaining'] -= $qtyToRemove;
+                        $qtyToRemove = 0;
+                    }
+                }
+            }
+        }
+
+        // محاسبه ارزش کل FIFO از لایه‌های باقی‌مانده
+        $totalFifoValue = 0;
+        $currentQty     = 0;
+        $fifoLayers     = [];
+
+        foreach ($layers as $layer) {
+            if ($layer['qty_remaining'] <= 0) continue;
+            $layerValue      = $layer['qty_remaining'] * $layer['unit_price'];
+            $totalFifoValue += $layerValue;
+            $currentQty     += $layer['qty_remaining'];
+            $fifoLayers[]    = [
+                'unit_price'    => $layer['unit_price'],
+                'qty_remaining' => $layer['qty_remaining'],
+                'layer_value'   => $layerValue,
+            ];
+        }
+
+        // میانگین بهای تمام‌شده FIFO
+        $averageCost = ($currentQty > 0) ? ($totalFifoValue / $currentQty) : 0;
+
+        echo json_encode([
+            'ok'              => true,
+            'stuff_name'      => $stuff['stuff_name'],
+            'current_qty'     => $currentQty,
+            'fifo_layers'     => $fifoLayers,
+            'total_fifo_value'=> $totalFifoValue,
+            'average_cost'    => $averageCost,
+        ]);
+        exit;
+    }
+
     echo json_encode(['status'=>'error','message'=>'عملیات نامعتبر']); exit;
 }
 
@@ -283,6 +370,67 @@ include __DIR__ . '/../../templates/header.php';
 .summary-chip.bal-chip { border-color: #93c5fd; background: #eff6ff; }
 .summary-chip.bal-chip .s-value { color: #1d4ed8; }
 
+/* ── پنل ارزش‌گذاری FIFO ── */
+.fifo-btn-wrap {
+    padding: 16px 20px 0;
+}
+.fifo-btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: linear-gradient(135deg, #059669, #10b981);
+    color: #fff; border: none; border-radius: 10px;
+    padding: 10px 22px; font-size: .9rem; font-weight: 600;
+    cursor: pointer; transition: opacity .2s;
+    font-family: Vazirmatn, sans-serif;
+}
+.fifo-btn:hover { opacity: .88; }
+.fifo-panel {
+    margin: 16px 20px 20px;
+    background: linear-gradient(135deg, #f0fdf4, #dcfce7);
+    border: 1.5px solid #86efac;
+    border-radius: 14px;
+    padding: 20px 24px;
+    display: none;
+}
+.fifo-panel-title {
+    font-size: 1.05rem; font-weight: 700; color: #14532d;
+    margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
+}
+.fifo-stats {
+    display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 18px;
+}
+.fifo-stat {
+    background: #fff; border-radius: 10px; padding: 12px 20px;
+    border: 1px solid #bbf7d0; display: flex; flex-direction: column;
+    align-items: center; gap: 4px; min-width: 140px;
+}
+.fifo-stat .fs-label { font-size: .75rem; color: #6b7280; }
+.fifo-stat .fs-value { font-size: 1.1rem; font-weight: 700; color: #065f46; }
+.fifo-stat.accent .fs-value { color: #1d4ed8; font-size: 1.15rem; }
+.fifo-layers-title {
+    font-size: .88rem; font-weight: 700; color: #166534;
+    margin-bottom: 10px;
+}
+.fifo-table {
+    width: 100%; border-collapse: collapse; font-size: .85rem;
+    background: #fff; border-radius: 10px; overflow: hidden;
+    border: 1px solid #bbf7d0;
+}
+.fifo-table th {
+    background: #059669; color: #fff; padding: 9px 14px;
+    text-align: center; font-weight: 600; white-space: nowrap;
+}
+.fifo-table td {
+    padding: 8px 14px; border-bottom: 1px solid #d1fae5;
+    text-align: center;
+}
+.fifo-table tr:last-child td { border-bottom: none; }
+.fifo-table tr:hover td { background: #f0fdf4; }
+.fifo-table .ft-num { font-weight: 700; color: #065f46; }
+.fifo-table .ft-val { font-weight: 700; color: #1d4ed8; }
+.fifo-table tfoot td {
+    background: #dcfce7; font-weight: 700; border-top: 2px solid #6ee7b7;
+}
+
 /* دکمه چاپ */
 @media print {
     .no-print, .fin-sidebar, .fin-topbar, nav, .kardex-header-gradient { display: none !important; }
@@ -407,6 +555,47 @@ include __DIR__ . '/../../templates/header.php';
                     <span class="s-value" id="sumBal">۰</span>
                 </div>
             </div>
+
+            <!-- دکمه ارزش‌گذاری FIFO -->
+            <div class="fifo-btn-wrap no-print" id="fifoBtnWrap" style="display:none;">
+                <button class="fifo-btn" onclick="loadFifo()">
+                    💲 ارزش‌گذاری FIFO
+                </button>
+            </div>
+
+            <!-- پنل نتیجه FIFO -->
+            <div class="fifo-panel no-print" id="fifoPanel">
+                <div class="fifo-panel-title">
+                    <span>💲</span> ارزش‌گذاری موجودی به روش FIFO
+                </div>
+                <div class="fifo-stats" id="fifoStats">
+                    <!-- کارت‌های آماری FIFO اینجا رندر می‌شوند -->
+                </div>
+                <div class="fifo-layers-title">📋 لایه‌های موجودی FIFO</div>
+                <div style="overflow-x:auto;">
+                    <table class="fifo-table">
+                        <thead>
+                            <tr>
+                                <th>لایه</th>
+                                <th>تعداد باقی‌مانده</th>
+                                <th>قیمت واحد (ریال)</th>
+                                <th>ارزش لایه (ریال)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="fifoLayersBody">
+                        </tbody>
+                        <tfoot id="fifoLayersFoot" style="display:none;">
+                            <tr>
+                                <td>جمع</td>
+                                <td class="ft-num" id="fifoTotalQty">—</td>
+                                <td>—</td>
+                                <td class="ft-val" id="fifoTotalVal">—</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+
         </div>
 
     </div>
@@ -512,6 +701,9 @@ function loadKardex() {
     tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:24px;color:#9ca3af;">در حال بارگذاری...</td></tr>';
     document.getElementById('kardexFoot').style.display  = 'none';
     document.getElementById('summaryRow').style.display  = 'none';
+    // بستن پنل FIFO هنگام بارگذاری مجدد کاردکس
+    document.getElementById('fifoBtnWrap').style.display = 'none';
+    document.getElementById('fifoPanel').style.display   = 'none';
 
     const params = new URLSearchParams({ action:'kardex', stuff_id:selectedStuffId });
     if (dateFrom) params.set('date_from', dateFrom);
@@ -577,9 +769,82 @@ function loadKardex() {
             document.getElementById('sumOut').textContent = fmtNum(totalOut);
             document.getElementById('sumBal').textContent = fmtNum(balance);
             document.getElementById('summaryRow').style.display = 'flex';
+
+            // نمایش دکمه ارزش‌گذاری FIFO پس از بارگذاری موفق کاردکس
+            document.getElementById('fifoBtnWrap').style.display = 'block';
         })
         .catch(() => {
             tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:#dc2626;padding:24px;">خطا در بارگذاری داده‌ها</td></tr>';
+        });
+}
+
+/* ══════════════════════════════════════════════════════════════
+   ارزش‌گذاری FIFO
+══════════════════════════════════════════════════════════════ */
+function loadFifo() {
+    if (!selectedStuffId) return;
+
+    const panel      = document.getElementById('fifoPanel');
+    const layersBody = document.getElementById('fifoLayersBody');
+    const layersFoot = document.getElementById('fifoLayersFoot');
+    const fifoStats  = document.getElementById('fifoStats');
+
+    // نمایش پنل با حالت بارگذاری
+    panel.style.display = 'block';
+    layersBody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:18px;color:#6b7280;">در حال محاسبه...</td></tr>';
+    layersFoot.style.display = 'none';
+    fifoStats.innerHTML = '';
+
+    fetch('inv_kardex.php?action=fifo_valuation&stuff_id=' + selectedStuffId,
+          { headers: {'X-Requested-With':'XMLHttpRequest'} })
+        .then(r => r.json())
+        .then(res => {
+            if (!res.ok) {
+                layersBody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:#dc2626;padding:18px;">${esc(res.message || 'خطا در محاسبه FIFO')}</td></tr>`;
+                return;
+            }
+
+            // رندر کارت‌های آماری
+            fifoStats.innerHTML = `
+                <div class="fifo-stat">
+                    <span class="fs-label">موجودی فعلی</span>
+                    <span class="fs-value">${fmtNum(res.current_qty)}</span>
+                </div>
+                <div class="fifo-stat accent">
+                    <span class="fs-label">ارزش کل FIFO (ریال)</span>
+                    <span class="fs-value"><strong>${fmtNum(res.total_fifo_value)}</strong></span>
+                </div>
+                <div class="fifo-stat">
+                    <span class="fs-label">میانگین بهای تمام‌شده (ریال)</span>
+                    <span class="fs-value">${fmtNum(Math.round(res.average_cost))}</span>
+                </div>
+            `;
+
+            // رندر جدول لایه‌ها
+            const layers = res.fifo_layers || [];
+            if (layers.length === 0) {
+                layersBody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:18px;color:#9ca3af;">موجودی‌ای برای نمایش وجود ندارد</td></tr>';
+                return;
+            }
+
+            layersBody.innerHTML = layers.map((l, i) => `
+                <tr>
+                    <td style="color:#6b7280;font-size:.82rem;">لایه ${fmtNum(i+1)}</td>
+                    <td class="ft-num">${fmtNum(l.qty_remaining)}</td>
+                    <td style="text-align:center;">${fmtNum(l.unit_price)}</td>
+                    <td class="ft-val">${fmtNum(l.layer_value)}</td>
+                </tr>`).join('');
+
+            // ردیف جمع
+            document.getElementById('fifoTotalQty').textContent = fmtNum(res.current_qty);
+            document.getElementById('fifoTotalVal').textContent = fmtNum(res.total_fifo_value);
+            layersFoot.style.display = 'table-footer-group';
+
+            // اسکرول به پنل FIFO
+            panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        })
+        .catch(() => {
+            layersBody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#dc2626;padding:18px;">خطا در ارتباط با سرور</td></tr>';
         });
 }
 
