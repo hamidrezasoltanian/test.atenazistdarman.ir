@@ -150,8 +150,57 @@ $cnt->execute([$requestId]);
 $notApprovedCount = (int)$cnt->fetchColumn();
 
 function mission_status_label($status) {
-    $map = ['pending' => 'در انتظار تایید', 'pending_admin' => 'در انتظار تایید مدیریت', 'approved' => 'تایید شده', 'expenses_open' => 'ثبت هزینه‌ها', 'expenses_submitted' => 'ارسال به مالی', 'finance_process' => 'بررسی مالی', 'finance_review' => 'بررسی مالی', 'completed' => 'پایان یافته', 'rejected' => 'رد شده'];
+    $map = [
+        'pending'            => 'در انتظار تأیید مدیر',
+        'pending_admin'      => 'در انتظار تأیید مدیریت',
+        'approved'           => 'تأیید شده',
+        'expenses_open'      => 'ثبت هزینه‌ها',
+        'expenses_submitted' => 'ارسال به واحد مالی',
+        'finance_process'    => 'بررسی مالی',
+        'finance_review'     => 'بررسی مالی',
+        'completed'          => 'تسویه شده',
+        'rejected'           => 'رد شده',
+    ];
     return $map[$status] ?? $status;
+}
+
+// نمایش stepper پیشرفت ماموریت
+function mission_stepper_html($status) {
+    $steps = [
+        ['key'=>'pending',            'label'=>'ثبت درخواست',      'icon'=>'📝'],
+        ['key'=>'approved',           'label'=>'تأیید مدیر',        'icon'=>'✅'],
+        ['key'=>'expenses_open',      'label'=>'ثبت هزینه‌ها',     'icon'=>'📋'],
+        ['key'=>'expenses_submitted', 'label'=>'ارسال به مالی',     'icon'=>'📤'],
+        ['key'=>'finance_review',     'label'=>'بررسی مالی',        'icon'=>'💼'],
+        ['key'=>'completed',          'label'=>'تسویه',             'icon'=>'🏁'],
+    ];
+    $active = ['pending_admin'=>1,'pending'=>0,'approved'=>1,'expenses_open'=>2,'expenses_submitted'=>3,'finance_process'=>4,'finance_review'=>4,'completed'=>5,'rejected'=>-1];
+    $curIdx = $active[$status] ?? 0;
+    $isRej  = $status === 'rejected';
+
+    $html = '<div style="display:flex;align-items:flex-start;justify-content:center;gap:0;margin:16px 0 8px;overflow-x:auto;padding-bottom:4px;">';
+    foreach ($steps as $i => $s) {
+        $done   = !$isRej && $i < $curIdx;
+        $isCur  = !$isRej && $i === $curIdx;
+        $cirClr = $done ? '#10b981' : ($isCur ? '#3b82f6' : '#e2e8f0');
+        $txtClr = $done ? '#059669' : ($isCur ? '#1d4ed8' : '#94a3b8');
+        $html .= '<div style="display:flex;flex-direction:column;align-items:center;min-width:80px;">';
+        $html .= "<div style=\"width:36px;height:36px;border-radius:50%;background:{$cirClr};display:flex;align-items:center;justify-content:center;font-size:.9rem;box-shadow:" . ($isCur ? '0 0 0 4px #bfdbfe' : 'none') . ";\">" . ($done ? '✓' : $s['icon']) . "</div>";
+        $html .= "<div style=\"font-size:.65rem;color:{$txtClr};margin-top:6px;text-align:center;line-height:1.3;\">" . $s['label'] . "</div>";
+        $html .= '</div>';
+        if ($i < count($steps)-1) {
+            $lineClr = $done ? '#10b981' : '#e2e8f0';
+            $html .= "<div style=\"flex:1;height:2px;background:{$lineClr};margin-top:17px;min-width:20px;\"></div>";
+        }
+    }
+    if ($isRej) {
+        $html .= '<div style="display:flex;flex-direction:column;align-items:center;min-width:80px;">';
+        $html .= '<div style="width:36px;height:36px;border-radius:50%;background:#ef4444;display:flex;align-items:center;justify-content:center;font-size:.9rem;">✖</div>';
+        $html .= '<div style="font-size:.65rem;color:#ef4444;margin-top:6px;text-align:center;">رد شده</div>';
+        $html .= '</div>';
+    }
+    $html .= '</div>';
+    return $html;
 }
 function translate_item_status($status) {
     $map = ['pending' => 'در انتظار', 'approved' => 'تایید شده', 'rejected' => 'رد شده'];
@@ -223,6 +272,20 @@ include __DIR__ . '/../../templates/sidebar.php';
             <div class="page-header page-actions">
                 <div><span class="page-title">جزئیات ماموریت #<?php echo $requestId; ?></span></div>
                 <div><a href="missions.php" class="btn btn-secondary">بازگشت</a></div>
+            </div>
+
+            <!-- ── Stepper پیشرفت ماموریت ── -->
+            <div style="background:#fff;border-radius:14px;padding:18px 24px;box-shadow:0 1px 8px rgba(0,0,0,.05);margin-bottom:18px;border:1px solid #e5e7eb;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                    <span style="font-size:.85rem;font-weight:700;color:#1e293b;">مرحله جاری ماموریت</span>
+                    <span class="status-badge st-<?php echo $req['status']; ?>" style="padding:5px 14px;border-radius:20px;font-size:.8rem;font-weight:700;">
+                        <?php echo mission_status_label($req['status']); ?>
+                    </span>
+                </div>
+                <?php echo mission_stepper_html($req['status']); ?>
+            </div>
+
+            <?php /* page-header div was closed above, removing extra closing div */ ?>
             </div>
 
             <?php if ($req['status'] === 'completed' && $isAdmin): ?>

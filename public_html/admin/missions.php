@@ -134,19 +134,39 @@ try {
     $myRequests = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) { $myRequests = []; }
 
-function mission_status_label($status) {
-    $map = [
-        'pending' => 'در انتظار تایید',
-        'pending_admin' => 'در انتظار تایید',
-        'approved' => 'تایید اولیه',
-        'expenses_open' => 'در حال ثبت هزینه',
-        'expenses_submitted' => 'ارسال به مالی',
-        'finance_process' => 'بررسی مالی',
-        'finance_review' => 'در حال بررسی مالی',
-        'completed' => 'پایان یافته',
-        'rejected' => 'رد شده'
+function mission_status_label($status, $role = '') {
+    // نمایش مرحله دقیق برحسب نقش کاربر
+    $mapAdmin = [
+        'pending'            => '⏳ در انتظار تأیید مدیر',
+        'pending_admin'      => '⏳ در انتظار تأیید مدیریت',
+        'approved'           => '✅ تأیید شده',
+        'expenses_open'      => '📝 ثبت هزینه توسط کارمند',
+        'expenses_submitted' => '📤 ارسال هزینه به مالی',
+        'finance_process'    => '💼 در بررسی مالی',
+        'finance_review'     => '💼 در بررسی مالی',
+        'completed'          => '✔ پایان یافته',
+        'rejected'           => '✖ رد شده',
     ];
+    $mapEmployee = [
+        'pending'            => '⏳ در انتظار تأیید',
+        'pending_admin'      => '⏳ در انتظار تأیید',
+        'approved'           => '✅ تأیید شده — ثبت هزینه',
+        'expenses_open'      => '📝 در حال ثبت هزینه',
+        'expenses_submitted' => '📤 ارسال شده به مالی',
+        'finance_process'    => '💼 بررسی مالی',
+        'finance_review'     => '💼 بررسی مالی',
+        'completed'          => '✔ تسویه شده',
+        'rejected'           => '✖ رد شده',
+    ];
+    $map = in_array($role, ['admin','management','finance_expert','finance_manager']) ? $mapAdmin : $mapEmployee;
     return $map[$status] ?? $status;
+}
+
+// پله‌های پیشرفت ماموریت برای نمایش Timeline
+function mission_step($status) {
+    $steps = ['pending','approved','expenses_open','expenses_submitted','finance_review','completed'];
+    $cur = array_search($status === 'pending_admin' ? 'pending' : ($status === 'finance_process' ? 'finance_review' : $status), $steps);
+    return $cur !== false ? $cur : ($status === 'rejected' ? -1 : 0);
 }
 
 $pageTitle = 'کارتابل ماموریت';
@@ -232,7 +252,7 @@ include __DIR__ . '/../../templates/sidebar.php';
                                                     </td>
                                                     <td>
                                                         <span class="status-badge status-<?php echo $t['status']; ?>">
-                                                            <?php echo mission_status_label($t['status']); ?>
+                                                            <?php echo mission_status_label($t['status'], $userRole); ?>
                                                         </span>
                                                     </td>
                                                     <td data-label="عملیات">
@@ -324,7 +344,7 @@ include __DIR__ . '/../../templates/sidebar.php';
                                                 <td><span style="background:#f1f5f9; padding:2px 8px; border-radius:6px; font-size:0.8rem;"><?php echo $r['item_count']; ?> مورد</span></td>
                                                 <td>
                                                     <span class="status-badge status-<?php echo $r['status']; ?>">
-                                                        <?php echo mission_status_label($r['status']); ?>
+                                                        <?php echo mission_status_label($r['status'], $userRole); ?>
                                                     </span>
                                                 </td>
                                                 <td data-label="عملیات">
