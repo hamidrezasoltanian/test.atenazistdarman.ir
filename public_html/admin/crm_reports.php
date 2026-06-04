@@ -465,6 +465,55 @@ if ($isAjax) {
             exit;
         }
 
+        // ═══ پیش‌بینی درآمد از pipeline ═══════════════════════════════════════════
+        case 'forecast_data': {
+            try {
+                // واکشی فرصت‌های CRM با ارزش و احتمال هر مرحله
+                $sql = "SELECT s.name AS stage, s.color, s.order_num,
+                               COUNT(o.id) AS opp_count,
+                               COALESCE(SUM(o.value), 0) AS total_value,
+                               COALESCE(AVG(o.probability), 50) AS avg_prob
+                        FROM crm_board_stages s
+                        LEFT JOIN crm_opportunities o
+                            ON o.stage_id = s.id AND o.is_deleted = 0
+                               AND o.status NOT IN ('won','lost')
+                        GROUP BY s.id, s.name, s.color, s.order_num
+                        ORDER BY s.order_num ASC";
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute();
+                $stages = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                $forecastTotal = 0;
+                foreach ($stages as &$st) {
+                    $prob = isset($st['avg_prob']) ? (float)$st['avg_prob'] : 50;
+                    $st['weighted_value'] = round((float)$st['total_value'] * $prob / 100);
+                    $forecastTotal += $st['weighted_value'];
+                }
+                unset($st);
+                // فروش ماه‌های گذشته برای trend
+                $sqlTrend = "SELECT MONTH(invoice_date) AS m, YEAR(invoice_date) AS y,
+                                    COALESCE(SUM(total_amount),0) AS revenue
+                             FROM fin_invoices
+                             WHERE type='sell' AND status='confirmed' AND is_deleted=0
+                               AND invoice_date >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
+                             GROUP BY y, m ORDER BY y ASC, m ASC";
+                $stT = $pdo->query($sqlTrend);
+                $trend = $stT ? $stT->fetchAll(PDO::FETCH_ASSOC) : [];
+                $avgMonthly = count($trend) > 0
+                    ? array_sum(array_column($trend, 'revenue')) / count($trend)
+                    : 0;
+                echo json_encode([
+                    'ok'             => true,
+                    'stages'         => $stages,
+                    'forecast_total' => $forecastTotal,
+                    'avg_monthly'    => round($avgMonthly),
+                    'trend'          => $trend,
+                ]);
+            } catch (Throwable $e) {
+                echo json_encode(['ok' => false, 'msg' => $e->getMessage()]);
+            }
+            exit;
+        }
+
         default:
             echo json_encode(['ok' => false, 'msg' => 'درخواست نامعتبر']);
             exit;
@@ -832,6 +881,7 @@ include __DIR__ . '/../../templates/header.php';
         <button class="tab-btn"        onclick="switchTab(3)" id="tab-btn-3">📋 KPI ماهانه</button>
         <button class="tab-btn"        onclick="switchTab(4)" id="tab-btn-4">🗺️ تحلیل استان‌ها</button>
         <button class="tab-btn"        onclick="switchTab(5)" id="tab-btn-5">🕒 تایم‌لاین فعالیت</button>
+        <button class="tab-btn"        onclick="switchTab(6)" id="tab-btn-6">🔮 پیش‌بینی درآمد</button>
     </div>
 
     <!-- ═══ تب ۱: قیف فروش ════════════════════════════════════ -->
@@ -958,6 +1008,34 @@ include __DIR__ . '/../../templates/header.php';
         </div>
     </div>
 
+    <!-- ═══ تب ۶: پیش‌بینی درآمد ══════════════════════════════ -->
+    <div class="tab-panel" id="tab-panel-6">
+        <div class="report-card">
+            <div class="report-card-header"><h3>پیش‌بینی درآمد از Pipeline</h3></div>
+            <div class="report-card-body">
+                <div id="forecast-loading" class="loading-placeholder"><div class="spinner"></div><br>در حال بارگذاری...</div>
+                <div id="forecast-content" style="display:none">
+                    <div class="summary-grid" style="margin-bottom:20px">
+                        <div class="summary-card"><div class="label">پیش‌بینی وزن‌دار</div><div class="value" id="fc-weighted">—</div><div class="sub">تومان</div></div>
+                        <div class="summary-card"><div class="label">میانگین فروش ماهانه</div><div class="value" id="fc-avg">—</div><div class="sub">تومان (۶ ماه)</div></div>
+                    </div>
+                    <div style="overflow-x:auto">
+                        <table style="width:100%;border-collapse:collapse;font-size:.88rem">
+                            <thead><tr style="background:#f1f5f9">
+                                <th style="padding:10px;text-align:right;border-bottom:2px solid #e5e7eb">مرحله</th>
+                                <th style="padding:10px;text-align:center;border-bottom:2px solid #e5e7eb">تعداد فرصت</th>
+                                <th style="padding:10px;text-align:center;border-bottom:2px solid #e5e7eb">ارزش کل</th>
+                                <th style="padding:10px;text-align:center;border-bottom:2px solid #e5e7eb">میانگین احتمال</th>
+                                <th style="padding:10px;text-align:center;border-bottom:2px solid #e5e7eb">ارزش وزن‌دار</th>
+                            </tr></thead>
+                            <tbody id="fc-table-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- ═══ تب ۵: تایم‌لاین فعالیت ══════════════════════════ -->
     <div class="tab-panel" id="tab-panel-5">
         <div class="report-card">
@@ -1044,6 +1122,7 @@ function loadTab(n) {
         case 3: loadKPI();        break;
         case 4: loadProvinces();  break;
         case 5: loadTimeline();   break;
+        case 6: loadForecast();   break;
     }
 }
 
@@ -1519,6 +1598,37 @@ function escHtml(str) {
         .replace(/</g,'&lt;')
         .replace(/>/g,'&gt;')
         .replace(/"/g,'&quot;');
+}
+
+// ─── پیش‌بینی درآمد ────────────────────────────────────────────────────────
+function loadForecast() {
+    const loading = document.getElementById('forecast-loading');
+    const content = document.getElementById('forecast-content');
+    if (loading) loading.style.display = '';
+    if (content) content.style.display = 'none';
+    fetchJSON('crm_reports.php?action=forecast_data').then(data => {
+        if (loading) loading.style.display = 'none';
+        if (content) content.style.display = '';
+        if (!data.ok) return;
+        document.getElementById('fc-weighted').textContent = formatToman(data.forecast_total);
+        document.getElementById('fc-avg').textContent      = formatToman(data.avg_monthly);
+        const tbody = document.getElementById('fc-table-body');
+        if (!tbody) return;
+        tbody.innerHTML = '';
+        (data.stages || []).forEach(s => {
+            const prob = parseFloat(s.avg_prob || 50).toFixed(0);
+            tbody.innerHTML += `<tr>
+                <td style="padding:9px 10px;border-bottom:1px solid #f1f5f9">
+                    <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${s.color || '#6366f1'};margin-left:6px"></span>
+                    ${s.stage}
+                </td>
+                <td style="padding:9px 10px;text-align:center;border-bottom:1px solid #f1f5f9">${s.opp_count}</td>
+                <td style="padding:9px 10px;text-align:center;border-bottom:1px solid #f1f5f9">${formatToman(s.total_value)}</td>
+                <td style="padding:9px 10px;text-align:center;border-bottom:1px solid #f1f5f9">${prob}%</td>
+                <td style="padding:9px 10px;text-align:center;border-bottom:1px solid #f1f5f9;font-weight:700;color:#4f46e5">${formatToman(s.weighted_value)}</td>
+            </tr>`;
+        });
+    });
 }
 
 // ─── بارگذاری اولیه صفحه ─────────────────────────────────────────────────

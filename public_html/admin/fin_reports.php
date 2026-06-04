@@ -941,6 +941,76 @@ if ($isAjax) {
         exit;
     }
 
+    // ── گزارش بهای تمام‌شده (COGS) ──────────────────────────────────
+    if ($action === 'cogs_report') {
+        $result = [
+            'ok'         => true,
+            'labels'     => [],
+            'cogs'       => [],
+            'revenue'    => [],
+            'gross_profit' => [],
+            'totals'     => ['total_cogs' => 0, 'total_revenue' => 0, 'gross_profit' => 0, 'gross_margin' => 0],
+            'top_products' => [],
+        ];
+        try {
+            $fy = getFiscalYear($pdo, $fyId ?: null);
+            $dateCondition = '';
+            $params = [];
+            if ($fy) {
+                $dateCondition = ' AND fi.invoice_date BETWEEN ? AND ?';
+                $params = [$fy['start_date'], $fy['end_date']];
+            }
+            // فروش ماهانه و بهای تمام‌شده
+            $sql = "SELECT MONTH(fi.invoice_date) AS m, YEAR(fi.invoice_date) AS y,
+                           COALESCE(SUM(fi.total_amount),0) AS revenue,
+                           COALESCE(SUM(
+                               (SELECT COALESCE(SUM(ii2.quantity * ii2.unit_price),0)
+                                FROM fin_invoice_items ii2
+                                WHERE ii2.invoice_id = fi.id)
+                           ),0) AS cost
+                    FROM fin_invoices fi
+                    WHERE fi.type='sell' AND fi.status='confirmed' AND fi.is_deleted=0
+                          $dateCondition
+                    GROUP BY y, m ORDER BY y ASC, m ASC";
+            $st = $pdo->prepare($sql);
+            $st->execute($params);
+            $rows = $st->fetchAll(PDO::FETCH_ASSOC);
+            $monthNames = ['','فروردین','اردیبهشت','خرداد','تیر','مرداد','شهریور','مهر','آبان','آذر','دی','بهمن','اسفند'];
+            foreach ($rows as $row) {
+                $jalaliMonth = (int)$row['m'];
+                $result['labels'][] = $monthNames[$jalaliMonth] ?? $row['m'];
+                $rev  = (int)$row['revenue'];
+                $cost = (int)$row['cost'];
+                $gp   = $rev - $cost;
+                $result['revenue'][]      = $rev;
+                $result['cogs'][]         = $cost;
+                $result['gross_profit'][] = $gp;
+                $result['totals']['total_revenue']  += $rev;
+                $result['totals']['total_cogs']     += $cost;
+                $result['totals']['gross_profit']   += $gp;
+            }
+            $rev = $result['totals']['total_revenue'];
+            $result['totals']['gross_margin'] = $rev > 0 ? round(($result['totals']['gross_profit'] / $rev) * 100, 1) : 0;
+            // ۸ محصول با بیشترین فروش
+            $sql2 = "SELECT spl.stuff_name, COALESCE(SUM(ii.quantity),0) AS qty,
+                            COALESCE(SUM(ii.quantity * ii.unit_price),0) AS revenue
+                     FROM fin_invoice_items ii
+                     JOIN fin_invoices fi ON fi.id = ii.invoice_id
+                     LEFT JOIN stuff_price_list spl ON spl.id = ii.stuff_id
+                     WHERE fi.type='sell' AND fi.status='confirmed' AND fi.is_deleted=0
+                           $dateCondition
+                     GROUP BY ii.stuff_id ORDER BY revenue DESC LIMIT 8";
+            $st2 = $pdo->prepare($sql2);
+            $st2->execute($params);
+            $result['top_products'] = $st2->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Throwable $e) {
+            $result['ok']  = false;
+            $result['msg'] = $e->getMessage();
+        }
+        echo json_encode($result);
+        exit;
+    }
+
     // اکشن ناشناخته
     echo json_encode(['ok' => false, 'msg' => 'اکشن نامعتبر']);
     exit;
@@ -1183,6 +1253,9 @@ include __DIR__ . '/../../templates/header.php';
         </button>
         <button class="rep-tab-btn" onclick="switchTab(10)" id="tab-btn-10">
             <i class="fas fa-water"></i> جریان نقدی
+        </button>
+        <button class="rep-tab-btn" onclick="switchTab(11)" id="tab-btn-11">
+            <i class="fas fa-calculator"></i> بهای تمام‌شده
         </button>
     </div>
 
@@ -1547,6 +1620,46 @@ include __DIR__ . '/../../templates/header.php';
         </div>
     </div>
 
+    <!-- ════ تب ۱۱ — بهای تمام‌شده COGS ════ -->
+    <div class="rep-panel" id="panel-11">
+        <div id="cogsLoading" class="rep-loading"><i class="fas fa-spinner"></i>در حال بارگذاری...</div>
+        <div id="cogsContent" style="display:none">
+            <div class="rep-summary-cards" style="grid-template-columns:repeat(4,1fr)">
+                <div class="rep-card primary">
+                    <div class="rep-card-icon">💰</div>
+                    <div class="rep-card-value" id="cogs-revenue">—</div>
+                    <div class="rep-card-label">درآمد فروش</div>
+                </div>
+                <div class="rep-card danger">
+                    <div class="rep-card-icon">🏭</div>
+                    <div class="rep-card-value" id="cogs-cogs">—</div>
+                    <div class="rep-card-label">بهای تمام‌شده کالا</div>
+                </div>
+                <div class="rep-card success">
+                    <div class="rep-card-icon">📈</div>
+                    <div class="rep-card-value" id="cogs-gp">—</div>
+                    <div class="rep-card-label">سود ناخالص</div>
+                </div>
+                <div class="rep-card warning">
+                    <div class="rep-card-icon">%</div>
+                    <div class="rep-card-value" id="cogs-margin">—</div>
+                    <div class="rep-card-label">حاشیه سود ناخالص</div>
+                </div>
+            </div>
+            <div class="rep-chart-box" style="margin-bottom:20px">
+                <div class="rep-chart-title"><i class="fas fa-calculator" style="color:#7c3aed"></i> مقایسه درآمد و بهای تمام‌شده ماهانه</div>
+                <div class="chart-canvas-wrap" style="height:300px"><canvas id="cogsChart"></canvas></div>
+            </div>
+            <div class="rep-table-wrap">
+                <div class="rep-table-title">پرفروش‌ترین محصولات</div>
+                <table class="rep-table">
+                    <thead><tr><th>محصول</th><th>تعداد فروش</th><th>درآمد</th></tr></thead>
+                    <tbody id="cogsTopTable"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
     <!-- ════ تب ۱۰ — جریان نقدی ════ -->
     <div class="rep-panel" id="panel-10">
         <div id="cfLoading" class="rep-loading"><i class="fas fa-spinner"></i>در حال بارگذاری...</div>
@@ -1662,6 +1775,7 @@ function switchTab(n, forceReload) {
         else if (n === 8) { /* مقایسه دوره‌ای — منتظر انتخاب کاربر */ }
         else if (n === 9) loadPurchasesReport(fy);
         else if (n === 10) loadCashflow(fy);
+        else if (n === 11) loadCogsReport(fy);
     }
 }
 
@@ -2439,6 +2553,58 @@ function loadKpiBar(fyId) {
         profitEl.style.color = d.net_profit >= 0 ? '#059669' : '#dc2626';
         document.getElementById('kpiBar').style.opacity = '1';
     }).catch(() => {});
+}
+
+// ══════════════════════════════════════════════════════════════════
+// تب ۱۱ — بهای تمام‌شده COGS
+// ══════════════════════════════════════════════════════════════════
+let cogsChartInst = null;
+function loadCogsReport(fyId) {
+    document.getElementById('cogsLoading').style.display = '';
+    document.getElementById('cogsContent').style.display = 'none';
+    fetch('fin_reports.php?action=cogs_report&fiscal_year_id=' + fyId, {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    })
+    .then(r => r.json())
+    .then(res => {
+        document.getElementById('cogsLoading').style.display = 'none';
+        document.getElementById('cogsContent').style.display = '';
+        if (!res.ok) return;
+        const t = res.totals;
+        document.getElementById('cogs-revenue').textContent = moneyFa(t.total_revenue);
+        document.getElementById('cogs-cogs').textContent    = moneyFa(t.total_cogs);
+        document.getElementById('cogs-gp').textContent      = moneyFa(t.gross_profit);
+        document.getElementById('cogs-margin').textContent  = t.gross_margin + '%';
+        // نمودار
+        if (cogsChartInst) cogsChartInst.destroy();
+        const ctx = document.getElementById('cogsChart').getContext('2d');
+        cogsChartInst = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: res.labels,
+                datasets: [
+                    { label: 'درآمد', data: res.revenue, backgroundColor: 'rgba(99,102,241,.7)' },
+                    { label: 'بهای تمام‌شده', data: res.cogs, backgroundColor: 'rgba(239,68,68,.6)' },
+                    { label: 'سود ناخالص', data: res.gross_profit, backgroundColor: 'rgba(16,185,129,.6)' }
+                ]
+            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+        });
+        // جدول محصولات
+        const tbody = document.getElementById('cogsTopTable');
+        tbody.innerHTML = '';
+        (res.top_products || []).forEach(p => {
+            tbody.innerHTML += `<tr>
+                <td>${p.stuff_name || '—'}</td>
+                <td>${numFa(p.qty)}</td>
+                <td>${moneyFa(p.revenue)}</td>
+            </tr>`;
+        });
+    })
+    .catch(() => {
+        document.getElementById('cogsLoading').style.display = 'none';
+        document.getElementById('cogsContent').style.display = '';
+    });
 }
 
 // ══════════════════════════════════════════════════════════════════

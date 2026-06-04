@@ -41,6 +41,8 @@ return [
             ['title' => 'افراد / مخاطبین',         'link' => 'admin/crm_contacts.php',            'perm' => 'crm_contacts'],
             ['title' => 'برنامه هفتگی',            'link' => 'admin/crm_weekplan.php',            'perm' => 'crm_view'],
             ['title' => 'مطالبات',                 'link' => 'admin/crm_receivables.php',         'perm' => 'crm_view'],
+            ['title' => 'هدف‌گذاری فروش',           'link' => 'admin/crm_targets.php',             'perm' => 'crm_view'],
+            ['title' => 'پیگیری خودکار مشتریان',    'link' => 'admin/crm_followup.php',            'perm' => 'crm_view'],
             ['title' => 'چک‌لیست روزانه',          'link' => 'admin/crm_daily_checklist.php',     'perm' => 'crm_checklist'],
             ['title' => 'مدیریت استان‌ها',          'link' => 'admin/crm_provinces.php',           'perm' => 'crm_view'],
             ['title' => 'گزارش‌های CRM',            'link' => 'admin/crm_reports.php',             'perm' => 'crm_kpi'],
@@ -55,6 +57,7 @@ return [
         'submenu' => [
             ['title' => 'لیست مشتریان',  'link' => 'admin/customers.php',        'perm' => 'customers_list'],
             ['title' => 'پروفایل مشتری', 'link' => 'admin/customer_profile.php', 'perm' => 'customers_view'],
+            ['title' => 'نمایندگان/توزیع‌کنندگان','link' => 'admin/dealers.php',  'perm' => 'crm_view'],
         ]
     ],
 
@@ -82,13 +85,16 @@ return [
             ['title' => 'داشبورد حسابداری', 'link' => 'admin/fin_accounting_dashboard.php', 'perm' => 'accounting_dashboard'],
             ['title' => 'فاکتور فروش',       'link' => 'admin/fin_invoice_sell.php',        'perm' => 'invoices_sell'],
             ['title' => 'پیش‌فاکتور',         'link' => 'admin/fin_preinvoice.php',          'perm' => 'invoices_sell'],
+            ['title' => 'آفر / قیمت‌نامه',    'link' => 'admin/fin_quote.php',               'perm' => 'invoices_sell'],
             ['title' => 'فاکتور خرید',        'link' => 'admin/fin_invoice_buy.php',         'perm' => 'invoices_buy'],
             ['title' => 'دریافت و پرداخت',   'link' => 'admin/fin_receive_pay.php',          'perm' => 'fin_receive_pay'],
             ['title' => 'تنخواه‌گردان',        'link' => 'admin/fin_petty_cash.php',          'perm' => 'fin_petty_cash'],
             ['title' => 'طرف حساب‌ها',        'link' => 'admin/fin_persons.php',             'perm' => 'fin_persons'],
             ['title' => 'پلان حساب‌ها',        'link' => 'admin/fin_accounts.php',            'perm' => 'fin_chart'],
+            ['title' => 'قراردادها',           'link' => 'admin/contracts.php',               'perm' => 'fin_persons'],
             ['title' => 'مدیریت چک‌ها',        'link' => 'admin/fin_cheques.php',             'perm' => 'fin_cheques'],
             ['title' => 'یادآور سررسید چک',   'link' => 'admin/fin_cheque_reminders.php',    'perm' => 'fin_cheques'],
+            ['title' => 'سامانه مالیاتی',      'link' => 'admin/fin_tax_integration.php',     'perm' => 'accounting_view'],
         ]
     ],
     [
@@ -100,6 +106,7 @@ return [
         'submenu' => [
             ['title' => 'گزارش‌های مالی',  'link' => 'admin/fin_reports.php',    'perm' => 'rep_financial'],
             ['title' => 'سال مالی',         'link' => 'admin/fiscal_years.php',   'perm' => 'settings_fiscal'],
+            ['title' => 'اعلانات SMS خودکار','link' => 'admin/sms_automation.php','perm' => 'settings_general'],
         ]
     ],
     [
@@ -184,6 +191,17 @@ return [
         'submenu' => [
             ['title' => 'لیست ورود/خروج', 'link' => 'admin/attendance_requests.php', 'perm' => 'attendance_list'],
             ['title' => 'تایید مدیریت',    'link' => 'admin/attendance_manage.php',   'perm' => 'attendance_admin'],
+        ]
+    ],
+    [
+        'title' => 'پشتیبانی پس از فروش',
+        'link'  => '#',
+        'icon_color' => '#0891b2',
+        'perm'  => 'crm_view',
+        'svg'   => '<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 13 19.79 19.79 0 0 1 1.61 4.38 2 2 0 0 1 3.6 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"></path>',
+        'submenu' => [
+            ['title' => 'تیکت‌های پشتیبانی', 'link' => 'admin/support_tickets.php', 'perm' => 'crm_view'],
+            ['title' => 'مدیریت گارانتی',     'link' => 'admin/warranty.php',         'perm' => 'crm_view'],
         ]
     ],
 
