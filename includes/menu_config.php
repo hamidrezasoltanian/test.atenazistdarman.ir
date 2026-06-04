@@ -93,6 +93,7 @@ return [
             ['title' => 'پلان حساب‌ها',        'link' => 'admin/fin_accounts.php',            'perm' => 'fin_chart'],
             ['title' => 'قراردادها',           'link' => 'admin/contracts.php',               'perm' => 'fin_persons'],
             ['title' => 'مدیریت چک‌ها',        'link' => 'admin/fin_cheques.php',             'perm' => 'fin_cheques'],
+            ['title' => 'تقویم سررسید چک',    'link' => 'admin/fin_cheque_calendar.php',     'perm' => 'fin_cheques'],
             ['title' => 'یادآور سررسید چک',   'link' => 'admin/fin_cheque_reminders.php',    'perm' => 'fin_cheques'],
             ['title' => 'سامانه مالیاتی',      'link' => 'admin/fin_tax_integration.php',     'perm' => 'accounting_view'],
         ]
