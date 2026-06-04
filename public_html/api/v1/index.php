@@ -588,5 +588,140 @@ if ($resource === 'dashboard') {
     }
 }
 
+// ══════════════════════════════════════════════════════════
+// ── قراردادها ─────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════
+if ($resource === 'contracts') {
+    if ($method === 'GET' && !$id) {
+        $stmt = $pdo->prepare(
+            "SELECT c.id, c.contract_number, c.title,
+                    fp.name AS customer_name,
+                    c.start_date, c.end_date, c.amount, c.status
+             FROM contracts c
+             LEFT JOIN fin_persons fp ON fp.id = c.person_id
+             WHERE c.is_deleted = 0
+             ORDER BY c.id DESC
+             LIMIT 100"
+        );
+        $stmt->execute();
+        apiResponse(['ok' => true, 'data' => $stmt->fetchAll()]);
+    }
+    if ($method === 'GET' && $id) {
+        $stmt = $pdo->prepare(
+            "SELECT c.*, fp.name AS customer_name
+             FROM contracts c
+             LEFT JOIN fin_persons fp ON fp.id = c.person_id
+             WHERE c.id = ? AND c.is_deleted = 0"
+        );
+        $stmt->execute([$id]);
+        $row = $stmt->fetch();
+        if (!$row) apiError('قرارداد یافت نشد', 404);
+        apiResponse(['ok' => true, 'data' => $row]);
+    }
+    apiError('endpoint یافت نشد', 404);
+}
+
+// ══════════════════════════════════════════════════════════
+// ── تیکت‌های پشتیبانی ─────────────────────────────────────
+// ══════════════════════════════════════════════════════════
+if ($resource === 'support-tickets') {
+    if ($method === 'GET' && !$id) {
+        $stmt = $pdo->prepare(
+            "SELECT st.id, st.ticket_number, st.subject,
+                    fp.name AS customer_name,
+                    st.priority, st.status, st.created_at
+             FROM support_tickets st
+             LEFT JOIN fin_persons fp ON fp.id = st.person_id
+             WHERE st.is_deleted = 0
+             ORDER BY st.id DESC
+             LIMIT 100"
+        );
+        $stmt->execute();
+        apiResponse(['ok' => true, 'data' => $stmt->fetchAll()]);
+    }
+    if ($method === 'GET' && $id) {
+        $stmt = $pdo->prepare(
+            "SELECT st.*, fp.name AS customer_name
+             FROM support_tickets st
+             LEFT JOIN fin_persons fp ON fp.id = st.person_id
+             WHERE st.id = ? AND st.is_deleted = 0"
+        );
+        $stmt->execute([$id]);
+        $row = $stmt->fetch();
+        if (!$row) apiError('تیکت یافت نشد', 404);
+        apiResponse(['ok' => true, 'data' => $row]);
+    }
+    apiError('endpoint یافت نشد', 404);
+}
+
+// ══════════════════════════════════════════════════════════
+// ── گارانتی / ضمانت ──────────────────────────────────────
+// ══════════════════════════════════════════════════════════
+if ($resource === 'warranty') {
+    if ($method === 'GET' && !$id) {
+        $stmt = $pdo->prepare(
+            "SELECT w.id, w.serial_number,
+                    s.name AS stuff_name,
+                    fp.name AS customer_name,
+                    w.expiry_date, w.status
+             FROM warranty_records w
+             LEFT JOIN stuffs s ON s.id = w.stuff_id
+             LEFT JOIN fin_persons fp ON fp.id = w.person_id
+             WHERE w.is_deleted = 0
+             ORDER BY w.id DESC
+             LIMIT 100"
+        );
+        $stmt->execute();
+        apiResponse(['ok' => true, 'data' => $stmt->fetchAll()]);
+    }
+    if ($method === 'GET' && $id) {
+        $stmt = $pdo->prepare(
+            "SELECT w.*, s.name AS stuff_name, fp.name AS customer_name
+             FROM warranty_records w
+             LEFT JOIN stuffs s ON s.id = w.stuff_id
+             LEFT JOIN fin_persons fp ON fp.id = w.person_id
+             WHERE w.id = ? AND w.is_deleted = 0"
+        );
+        $stmt->execute([$id]);
+        $row = $stmt->fetch();
+        if (!$row) apiError('رکورد گارانتی یافت نشد', 404);
+        apiResponse(['ok' => true, 'data' => $row]);
+    }
+    apiError('endpoint یافت نشد', 404);
+}
+
+// ══════════════════════════════════════════════════════════
+// ── آفرها / پیشنهادهای قیمت ──────────────────────────────
+// ══════════════════════════════════════════════════════════
+if ($resource === 'quotes') {
+    if ($method === 'GET' && !$id) {
+        $stmt = $pdo->prepare(
+            "SELECT q.id, q.quote_number,
+                    fp.name AS customer_name,
+                    q.total_amount, q.status, q.quote_date
+             FROM quotes q
+             LEFT JOIN fin_persons fp ON fp.id = q.person_id
+             WHERE q.is_deleted = 0
+             ORDER BY q.id DESC
+             LIMIT 100"
+        );
+        $stmt->execute();
+        apiResponse(['ok' => true, 'data' => $stmt->fetchAll()]);
+    }
+    if ($method === 'GET' && $id) {
+        $stmt = $pdo->prepare(
+            "SELECT q.*, fp.name AS customer_name
+             FROM quotes q
+             LEFT JOIN fin_persons fp ON fp.id = q.person_id
+             WHERE q.id = ? AND q.is_deleted = 0"
+        );
+        $stmt->execute([$id]);
+        $row = $stmt->fetch();
+        if (!$row) apiError('آفر یافت نشد', 404);
+        apiResponse(['ok' => true, 'data' => $row]);
+    }
+    apiError('endpoint یافت نشد', 404);
+}
+
 // ── fallback ───────────────────────────────────────────────
 apiError("endpoint '$resource/$action' یافت نشد", 404);

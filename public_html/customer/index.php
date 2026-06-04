@@ -188,8 +188,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['verify_otp']) && !$po
     }
 }
 
+// ---- ثبت تیکت جدید ----
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'new_ticket' && $portalPerson) {
+    $personId   = (int)$portalPerson['person_id'];
+    $desc       = trim($_POST['description'] ?? '');
+    if ($desc) {
+        try {
+            // ایجاد جدول support_tickets در صورت نبودن
+            $pdo->exec("CREATE TABLE IF NOT EXISTS `support_tickets` (
+                `id`            INT AUTO_INCREMENT PRIMARY KEY,
+                `ticket_number` VARCHAR(30) NOT NULL,
+                `person_id`     INT NOT NULL,
+                `customer_name` VARCHAR(200) DEFAULT NULL,
+                `subject`       VARCHAR(300) DEFAULT 'درخواست پشتیبانی',
+                `description`   TEXT,
+                `priority`      ENUM('low','normal','high','urgent') NOT NULL DEFAULT 'normal',
+                `status`        ENUM('open','in_progress','resolved','closed') NOT NULL DEFAULT 'open',
+                `created_by`    INT DEFAULT NULL,
+                `is_deleted`    TINYINT(1) NOT NULL DEFAULT 0,
+                `created_at`    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                `updated_at`    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                KEY `idx_person` (`person_id`),
+                KEY `idx_status` (`status`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+            // شماره تیکت: TKT-YYYYMM-XXXX
+            $ym   = date('Ym');
+            $cntStmt = $pdo->prepare("SELECT COUNT(*) FROM support_tickets WHERE ticket_number LIKE ?");
+            $cntStmt->execute(["TKT-$ym-%"]);
+            $seq  = (int)$cntStmt->fetchColumn() + 1;
+            $ticketNumber = 'TKT-' . $ym . '-' . str_pad($seq, 4, '0', STR_PAD_LEFT);
+
+            $pdo->prepare("INSERT INTO support_tickets (ticket_number, person_id, customer_name, subject, description, created_by, status) VALUES (?,?,?,?,?,?,?)")
+                ->execute([$ticketNumber, $personId, $portalPerson['person_name'], 'درخواست پشتیبانی', $desc, $personId, 'open']);
+            $message = 'تیکت پشتیبانی ' . $ticketNumber . ' با موفقیت ثبت شد';
+            $messageType = 'success';
+        } catch (Throwable $e) {
+            $message = 'خطا در ثبت تیکت';
+            $messageType = 'error';
+        }
+    } else {
+        $message = 'توضیحات تیکت الزامی است';
+        $messageType = 'error';
+    }
+}
+
 // ---- بارگذاری داده داشبورد ----
-$invoices = [];
+$invoices       = [];
+$supportTickets = [];
 $statOpen = 0;
 $statDebt = 0;
 $statLastBuy = '—';
@@ -223,6 +269,13 @@ if ($step === 'dashboard' && $portalPerson) {
         $statDebt    = (float)($stats['total_debt'] ?? 0);
         $statLastBuy = $stats['last_buy'] ? jdate('Y/m/d', strtotime($stats['last_buy'])) : '—';
     } catch (Throwable $e) {}
+
+    // بارگذاری تیکت‌های پشتیبانی
+    try {
+        $stmtT = $pdo->prepare("SELECT id, ticket_number, subject, status, created_at FROM support_tickets WHERE person_id = ? AND is_deleted=0 ORDER BY id DESC LIMIT 10");
+        $stmtT->execute([$personId]);
+        $supportTickets = $stmtT->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Throwable $e) { $supportTickets = []; }
 }
 
 // ---- نام شرکت ----
@@ -511,6 +564,57 @@ body {
 .empty-state p { font-size: 13px; }
 
 .cp-footer { text-align: center; padding: 20px; font-size: 12px; color: var(--text-muted); }
+
+/* ---- بج وضعیت تیکت ---- */
+.badge-open        { background: #fff1f2; color: var(--danger);  border: 1px solid #fecdd3; }
+.badge-in_progress { background: #fffbeb; color: var(--warning); border: 1px solid #fde68a; }
+.badge-resolved    { background: #f0fdf4; color: var(--success); border: 1px solid #bbf7d0; }
+.badge-closed      { background: #f8fafc; color: var(--text-muted); border: 1px solid var(--border); }
+
+/* ---- فرم تیکت جدید ---- */
+.ticket-form-wrap { padding: 16px 20px; border-top: 1px solid var(--border); }
+.ticket-form-wrap textarea {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1.5px solid var(--border);
+    border-radius: 10px;
+    font-family: inherit;
+    font-size: 13px;
+    color: var(--text);
+    resize: vertical;
+    min-height: 80px;
+    outline: none;
+    transition: border-color .2s;
+}
+.ticket-form-wrap textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37,99,235,.08); }
+.ticket-submit-btn {
+    margin-top: 10px;
+    padding: 9px 22px;
+    background: var(--primary);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background .15s;
+}
+.ticket-submit-btn:hover { background: #1d4ed8; }
+.new-ticket-toggle {
+    margin-right: auto;
+    padding: 5px 14px;
+    background: var(--primary-light);
+    color: var(--primary);
+    border: 1px solid #bfdbfe;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background .15s;
+}
+.new-ticket-toggle:hover { background: #dbeafe; }
 
 @media (max-width: 600px) {
     .cp-table th:nth-child(n+4), .cp-table td:nth-child(n+4) { display: none; }
