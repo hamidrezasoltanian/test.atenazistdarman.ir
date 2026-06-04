@@ -638,6 +638,205 @@ function saveInvoiceToDb($pdo, $type, $targetStatus, $userId, $fiscalYearId) {
 
     $pdo->commit();
 
+    // ── ارسال SMS اتوماسیون پس از تأیید فاکتور ──
+    if ($targetStatus === 'confirmed' && $type === 'sell') {
+        try {
+            // ساخت جدول‌های اتوماسیون اگر وجود نداشت
+            $pdo->exec("CREATE TABLE IF NOT EXISTS `sms_automation_rules` (
+                `id`               INT AUTO_INCREMENT PRIMARY KEY,
+                `event_type`       VARCHAR(60) NOT NULL,
+                `name`             VARCHAR(200) NOT NULL,
+                `message_template` TEXT NOT NULL,
+                `is_active`        TINYINT(1) DEFAULT 1,
+                `send_days_before` INT DEFAULT 0,
+                `created_at`       DATETIME DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+            $pdo->exec("CREATE TABLE IF NOT EXISTS `sms_automation_log` (
+                `id`             INT AUTO_INCREMENT PRIMARY KEY,
+                `rule_id`        INT DEFAULT NULL,
+                `event_type`     VARCHAR(50) NOT NULL,
+                `phone`          VARCHAR(20) NOT NULL,
+                `recipient_name` VARCHAR(200) DEFAULT NULL,
+                `message`        TEXT NOT NULL,
+                `status`         ENUM('sent','failed','pending') DEFAULT 'pending',
+                `sent_at`        DATETIME DEFAULT CURRENT_TIMESTAMP,
+                `error_msg`      VARCHAR(500) DEFAULT NULL
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+            // جستجوی قانون فعال برای رویداد تأیید فاکتور
+            $ruleStmt = $pdo->prepare(
+                "SELECT * FROM sms_automation_rules WHERE event_type='invoice_confirmed' AND is_active=1 LIMIT 1"
+            );
+            $ruleStmt->execute();
+            $smsRule = $ruleStmt->fetch(PDO::FETCH_ASSOC);
+
+            if ($smsRule) {
+                // دریافت شماره تلفن مشتری
+                $phoneStmt = $pdo->prepare(
+                    "SELECT name, COALESCE(company_name, name) AS display_name, mobile, phone
+                     FROM fin_persons WHERE id = ? LIMIT 1"
+                );
+                $phoneStmt->execute([$personId]);
+                $personRow = $phoneStmt->fetch(PDO::FETCH_ASSOC);
+                $smsPhone  = trim($personRow['mobile'] ?? $personRow['phone'] ?? '');
+                $smsName   = $personRow['display_name'] ?? $personName;
+
+                if ($smsPhone) {
+                    // ساخت پیام از قالب
+                    $todayJalali = jdate('Y/m/d');
+                    $smsMsg = $smsRule['message_template'];
+                    $smsMsg = str_replace('{نام}',    $smsName,                      $smsMsg);
+                    $smsMsg = str_replace('{مبلغ}',   number_format((int)$totalAmount), $smsMsg);
+                    $smsMsg = str_replace('{شماره}',  $invoiceNumber,                $smsMsg);
+                    $smsMsg = str_replace('{تاریخ}',  $todayJalali,                  $smsMsg);
+
+                    // ارسال SMS
+                    $smsSent = false;
+                    $smsError = null;
+                    try {
+                        // تابع sendFreeSms در fin_cheque_reminders.php تعریف شده؛
+                        // اگر از آن فایل include نشده، به‌صورت مستقیم ارسال می‌کنیم
+                        if (function_exists('sendFreeSms')) {
+                            $smsSent = sendFreeSms($smsPhone, $smsMsg);
+                        } else {
+                            // ارسال مستقیم با IPPanel
+                            $config  = require __DIR__ . '/../../Config/config.php';
+                            $apiKey  = $config['sms_api_key'] ?? '';
+                            $from    = $config['sms_from_number'] ?? '';
+                            if ($apiKey) {
+                                $mob = $smsPhone;
+                                if (substr($mob, 0, 1) === '0') $mob = '+98' . substr($mob, 1);
+                                $url  = 'https://api2.ippanel.com/api/v1/sms/send/webservice/single';
+                                $body = json_encode(['sender' => $from, 'recipient' => $mob, 'message' => $smsMsg]);
+                                $ch   = curl_init($url);
+                                curl_setopt_array($ch, [
+                                    CURLOPT_POST           => true,
+                                    CURLOPT_POSTFIELDS     => $body,
+                                    CURLOPT_HTTPHEADER     => ['Content-Type: application/json', 'apikey: ' . $apiKey],
+                                    CURLOPT_RETURNTRANSFER => true,
+                                    CURLOPT_TIMEOUT        => 5,
+                                ]);
+                                $smsRes  = curl_exec($ch);
+                                $smsCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                                curl_close($ch);
+                                $smsSent = ($smsCode >= 200 && $smsCode < 300);
+                            }
+                        }
+                    } catch (Throwable $smsEx) {
+                        $smsError = $smsEx->getMessage();
+                    }
+
+                    // لاگ ارسال
+                    $pdo->prepare(
+                        "INSERT INTO sms_automation_log
+                            (rule_id, event_type, phone, recipient_name, message, status, error_msg, sent_at)
+                         VALUES (?, 'invoice_confirmed', ?, ?, ?, ?, ?, NOW())"
+                    )->execute([
+                        $smsRule['id'],
+                        $smsPhone,
+                        $smsName,
+                        $smsMsg,
+                        $smsSent ? 'sent' : 'failed',
+                        $smsError,
+                    ]);
+                }
+            }
+        } catch (Throwable $smsE) {
+            // شکست SMS نباید روی ذخیره فاکتور تأثیر بگذارد
+            error_log('SMS automation (invoice_confirmed) error: ' . $smsE->getMessage());
+        }
+    }
+
+    // ── ارسال SMS برای رویداد دریافت کامل وجه (payment_received) ──
+    // این بخش در fin_receive_pay.php هنگام ثبت دریافت از مشتری فعال می‌شود؛
+    // اینجا وضعیت را بررسی می‌کنیم: اگر paid_amount >= total_amount شد
+    if ($type === 'sell' && in_array($targetStatus, ['confirmed', 'draft'])) {
+        try {
+            $checkPaidStmt = $pdo->prepare(
+                "SELECT paid_amount, total_amount, person_id, invoice_number, customer_name
+                 FROM fin_invoices WHERE id = ? AND is_deleted = 0 LIMIT 1"
+            );
+            $checkPaidStmt->execute([$invoiceId]);
+            $invCheck = $checkPaidStmt->fetch(PDO::FETCH_ASSOC);
+
+            if ($invCheck && (int)$invCheck['paid_amount'] >= (int)$invCheck['total_amount'] && (int)$invCheck['total_amount'] > 0) {
+                // جستجوی قانون SMS پرداخت کامل
+                $pmtRuleStmt = $pdo->prepare(
+                    "SELECT * FROM sms_automation_rules WHERE event_type='payment_received' AND is_active=1 LIMIT 1"
+                );
+                $pmtRuleStmt->execute();
+                $pmtRule = $pmtRuleStmt->fetch(PDO::FETCH_ASSOC);
+
+                if ($pmtRule) {
+                    $pmtPhoneStmt = $pdo->prepare(
+                        "SELECT COALESCE(company_name, name) AS display_name, mobile, phone
+                         FROM fin_persons WHERE id = ? LIMIT 1"
+                    );
+                    $pmtPhoneStmt->execute([$invCheck['person_id']]);
+                    $pmtPerson = $pmtPhoneStmt->fetch(PDO::FETCH_ASSOC);
+                    $pmtPhone  = trim($pmtPerson['mobile'] ?? $pmtPerson['phone'] ?? '');
+                    $pmtName   = $pmtPerson['display_name'] ?? ($invCheck['customer_name'] ?? '');
+
+                    if ($pmtPhone) {
+                        $todayJalali = jdate('Y/m/d');
+                        $pmtMsg = $pmtRule['message_template'];
+                        $pmtMsg = str_replace('{نام}',   $pmtName,                                 $pmtMsg);
+                        $pmtMsg = str_replace('{مبلغ}',  number_format((int)$invCheck['paid_amount']), $pmtMsg);
+                        $pmtMsg = str_replace('{شماره}', $invCheck['invoice_number'],               $pmtMsg);
+                        $pmtMsg = str_replace('{تاریخ}', $todayJalali,                              $pmtMsg);
+
+                        $pmtSent  = false;
+                        $pmtError = null;
+                        try {
+                            if (function_exists('sendFreeSms')) {
+                                $pmtSent = sendFreeSms($pmtPhone, $pmtMsg);
+                            } else {
+                                $config2 = require __DIR__ . '/../../Config/config.php';
+                                $apiKey2 = $config2['sms_api_key'] ?? '';
+                                $from2   = $config2['sms_from_number'] ?? '';
+                                if ($apiKey2) {
+                                    $mob2 = $pmtPhone;
+                                    if (substr($mob2, 0, 1) === '0') $mob2 = '+98' . substr($mob2, 1);
+                                    $url2  = 'https://api2.ippanel.com/api/v1/sms/send/webservice/single';
+                                    $body2 = json_encode(['sender' => $from2, 'recipient' => $mob2, 'message' => $pmtMsg]);
+                                    $ch2   = curl_init($url2);
+                                    curl_setopt_array($ch2, [
+                                        CURLOPT_POST           => true,
+                                        CURLOPT_POSTFIELDS     => $body2,
+                                        CURLOPT_HTTPHEADER     => ['Content-Type: application/json', 'apikey: ' . $apiKey2],
+                                        CURLOPT_RETURNTRANSFER => true,
+                                        CURLOPT_TIMEOUT        => 5,
+                                    ]);
+                                    $res2  = curl_exec($ch2);
+                                    $code2 = curl_getinfo($ch2, CURLINFO_HTTP_CODE);
+                                    curl_close($ch2);
+                                    $pmtSent = ($code2 >= 200 && $code2 < 300);
+                                }
+                            }
+                        } catch (Throwable $pmtEx) {
+                            $pmtError = $pmtEx->getMessage();
+                        }
+
+                        $pdo->prepare(
+                            "INSERT INTO sms_automation_log
+                                (rule_id, event_type, phone, recipient_name, message, status, error_msg, sent_at)
+                             VALUES (?, 'payment_received', ?, ?, ?, ?, ?, NOW())"
+                        )->execute([
+                            $pmtRule['id'],
+                            $pmtPhone,
+                            $pmtName,
+                            $pmtMsg,
+                            $pmtSent ? 'sent' : 'failed',
+                            $pmtError,
+                        ]);
+                    }
+                }
+            }
+        } catch (Throwable $pmtE) {
+            error_log('SMS automation (payment_received) error: ' . $pmtE->getMessage());
+        }
+    }
+
     // ── ثبت خودکار پورسانت هنگام تأیید فاکتور فروش ──
     if ($targetStatus === 'confirmed' && $type === 'sell') {
         try {

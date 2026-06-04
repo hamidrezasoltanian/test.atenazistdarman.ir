@@ -649,6 +649,14 @@ body {
 <!-- ======================== داشبورد ======================== -->
 <div class="cp-main">
 
+  <!-- پیام سیستمی -->
+  <?php if ($message && (!isset($_POST['action']) || $_POST['action'] !== 'new_ticket')): ?>
+  <div class="cp-alert <?= $messageType ?>" style="margin-bottom:16px">
+    <i class="fas fa-<?= $messageType === 'error' ? 'exclamation-circle' : 'check-circle' ?>"></i>
+    <?= htmlspecialchars($message) ?>
+  </div>
+  <?php endif; ?>
+
   <!-- خوش‌آمد -->
   <div class="cp-welcome">
     <h2>خوش آمدید، <?= htmlspecialchars($portalPerson['person_name'] ?? 'مشتری') ?> عزیز</h2>
@@ -722,6 +730,75 @@ body {
       <div class="empty-state">
         <i class="fas fa-file-invoice"></i>
         <p>هیچ فاکتوری ثبت نشده است</p>
+      </div>
+      <?php endif; ?>
+    </div>
+  </div>
+
+  <!-- تیکت‌های پشتیبانی -->
+  <div class="cp-section">
+    <div class="cp-section-header" style="justify-content:space-between">
+      <span><i class="fas fa-ticket-alt"></i> تیکت‌های پشتیبانی</span>
+      <button class="new-ticket-toggle" onclick="document.getElementById('newTicketForm').style.display=document.getElementById('newTicketForm').style.display==='none'?'block':'none'">
+        + تیکت جدید
+      </button>
+    </div>
+
+    <!-- فرم تیکت جدید (پنهان) -->
+    <div id="newTicketForm" style="display:none">
+      <div class="ticket-form-wrap">
+        <?php if ($message && isset($_POST['action']) && $_POST['action'] === 'new_ticket'): ?>
+        <div class="cp-alert <?= $messageType ?>" style="margin-bottom:12px">
+          <i class="fas fa-<?= $messageType === 'error' ? 'exclamation-circle' : 'check-circle' ?>"></i>
+          <?= htmlspecialchars($message) ?>
+        </div>
+        <?php endif; ?>
+        <form method="POST">
+          <input type="hidden" name="action" value="new_ticket">
+          <label class="cp-label" for="ticketDesc">شرح مشکل یا درخواست</label>
+          <textarea id="ticketDesc" name="description" placeholder="مشکل یا درخواست خود را اینجا بنویسید..." required></textarea>
+          <button type="submit" class="ticket-submit-btn">
+            <i class="fas fa-paper-plane"></i> ارسال تیکت
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <div style="overflow-x:auto">
+      <?php if ($supportTickets): ?>
+      <table class="cp-table">
+        <thead>
+          <tr>
+            <th>شماره</th>
+            <th>موضوع</th>
+            <th>وضعیت</th>
+            <th>تاریخ</th>
+          </tr>
+        </thead>
+        <tbody>
+          <?php foreach ($supportTickets as $tkt): ?>
+          <?php
+              $tktStatus = match($tkt['status'] ?? 'open') {
+                  'open'        => ['باز',          'badge-open'],
+                  'in_progress' => ['در حال بررسی', 'badge-in_progress'],
+                  'resolved'    => ['حل‌شده',        'badge-resolved'],
+                  'closed'      => ['بسته',          'badge-closed'],
+                  default       => ['باز',           'badge-open'],
+              };
+          ?>
+          <tr>
+            <td style="font-weight:600;direction:ltr;text-align:right"><?= htmlspecialchars($tkt['ticket_number'] ?? '#' . $tkt['id']) ?></td>
+            <td><?= htmlspecialchars($tkt['subject'] ?? '') ?></td>
+            <td><span class="cp-badge <?= $tktStatus[1] ?>"><?= $tktStatus[0] ?></span></td>
+            <td><?= $tkt['created_at'] ? jdate('Y/m/d', strtotime($tkt['created_at'])) : '—' ?></td>
+          </tr>
+          <?php endforeach; ?>
+        </tbody>
+      </table>
+      <?php else: ?>
+      <div class="empty-state">
+        <i class="fas fa-ticket-alt"></i>
+        <p>هیچ تیکت پشتیبانی‌ای ثبت نشده است</p>
       </div>
       <?php endif; ?>
     </div>
