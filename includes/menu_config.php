@@ -58,6 +58,17 @@ return [
         ]
     ],
 
+    // ─── تنخواه‌گردان ───
+    ['type' => 'separator', 'title' => 'تنخواه‌گردان'],
+
+    [
+        'title' => 'تنخواه‌گردان',
+        'link'  => 'admin/fin_petty_cash.php',
+        'icon_color' => '#0891b2',
+        'perm'  => 'fin_petty_cash',
+        'svg'   => '<path d="M20 12V8H6a2 2 0 0 1-2-2c0-1.1.9-2 2-2h12v4"></path><path d="M4 6v12c0 1.1.9 2 2 2h14v-4"></path><path d="M18 12a2 2 0 0 0-2 2c0 1.1.9 2 2 2h4v-4h-4z"></path>'
+    ],
+
     // ─── مالی و حسابداری ───
     ['type' => 'separator', 'title' => 'مالی و حسابداری'],
 
@@ -197,17 +208,11 @@ return [
         'perm'  => 'letters_module_view',
         'svg'   => '<path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline>',
         'submenu' => [
-            ['title' => 'کارتابل دریافتی',  'link' => 'admin/cartable_inbox.php',    'perm' => 'letters_inbox',   'badge' => 'inbox'],
-            ['title' => 'در دست اقدام',      'link' => 'admin/letters_pending.php',   'perm' => 'letters_pending', 'badge' => 'pending'],
-            ['title' => 'ایجاد نامه جدید',   'link' => 'admin/letter_create.php',     'perm' => 'letters_create'],
-            ['title' => 'نامه‌های صادره',     'link' => 'admin/letters_outgoing.php',  'perm' => 'letters_outgoing'],
-            ['title' => 'نامه‌های وارده',     'link' => 'admin/letters_incoming.php',  'perm' => 'letters_incoming'],
-            ['title' => 'نامه‌های داخلی',     'link' => 'admin/letters_internal.php',  'perm' => 'letters_internal'],
-            ['title' => 'پیش‌نویس‌ها',         'link' => 'admin/letters_drafts.php',    'perm' => 'letters_drafts'],
-            ['title' => 'تایید شده / امضا',   'link' => 'admin/letters_approved.php',  'perm' => 'letters_sign',   'badge' => 'approved'],
-            ['title' => 'آرشیو نامه‌ها',       'link' => 'admin/letters_archive.php',   'perm' => 'letters_archive_view'],
-            ['title' => 'حذف شده‌ها',           'link' => 'admin/letters_trash.php',     'perm' => 'letters_trash_view'],
-            ['title' => 'تنظیمات و قالب‌ها',   'link' => 'admin/letters_settings.php',  'perm' => 'letters_settings'],
+            ['title' => 'کارتابل من',       'link' => 'admin/cartable_inbox.php', 'perm' => 'letters_inbox', 'badge' => 'inbox'],
+            ['title' => 'نامه‌ها',           'link' => 'admin/letters.php',        'perm' => 'letters_module_view'],
+            ['title' => 'ایجاد نامه',        'link' => 'admin/letter_create.php',  'perm' => 'letters_create'],
+            ['title' => 'امضا / تایید',      'link' => 'admin/letters_approved.php','perm' => 'letters_sign', 'badge' => 'approved'],
+            ['title' => 'تنظیمات',           'link' => 'admin/letters_settings.php','perm' => 'letters_settings'],
         ]
     ],
     [
