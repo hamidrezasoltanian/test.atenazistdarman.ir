@@ -325,19 +325,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isAjax) {
             $q = '%' . trim($_POST['q'] ?? '') . '%';
             try {
                 $stmt = $pdo->prepare(
-                    "SELECT s.id, s.name, s.code,
-                            COALESCE(spl.price_sell, s.price_sell, 0) AS price,
-                            COALESCE(s.unit,'') AS unit
+                    "SELECT s.id,
+                            COALESCE(s.stuff_name, s.name, '') AS name,
+                            COALESCE(s.stuff_code, s.code, '') AS code,
+                            COALESCE(s.unit,'') AS unit,
+                            COALESCE(spl.price_sell, s.price_sell, spl.price, 0)           AS price,
+                            COALESCE(spl.price_sell_imed, spl.price_imed, 0)                AS price_imed,
+                            COALESCE(spl.price_sell_faradis, spl.price_faradis, 0)          AS price_faradis,
+                            COALESCE(spl.price_sell_dermazon, spl.price_dermazon, 0)        AS price_dermazon
                      FROM stuffs s
                      LEFT JOIN stuff_price_list spl ON spl.stuff_id = s.id
-                     WHERE s.is_deleted = 0 AND (s.name LIKE ? OR s.code LIKE ?)
-                     ORDER BY s.name LIMIT 20"
+                     WHERE s.is_delete = 0
+                       AND (s.stuff_name LIKE ? OR s.stuff_code LIKE ? OR s.technical_code LIKE ?)
+                     ORDER BY s.stuff_name LIMIT 20"
                 );
-                $stmt->execute([$q, $q]);
+                $stmt->execute([$q, $q, $q]);
                 $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
             } catch (Throwable $e) {
                 try {
-                    $stmt2 = $pdo->prepare("SELECT id, name, '' AS code, 0 AS price, '' AS unit FROM stuffs WHERE is_deleted = 0 AND name LIKE ? LIMIT 20");
+                    $stmt2 = $pdo->prepare("SELECT id, stuff_name AS name, stuff_code AS code, 0 AS price, 0 AS price_imed, 0 AS price_faradis, 0 AS price_dermazon, '' AS unit FROM stuffs WHERE is_delete = 0 AND stuff_name LIKE ? LIMIT 20");
                     $stmt2->execute([$q]);
                     $rows = $stmt2->fetchAll(PDO::FETCH_ASSOC);
                 } catch (Throwable $e2) { $rows = []; }
@@ -346,20 +352,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isAjax) {
             exit;
         }
 
-        // ---- قیمت یک کالا ----
+        // ---- قیمت یک کالا (همه سطوح) ----
         if ($action === 'get_stuff_price') {
             $sid = (int)($_POST['stuff_id'] ?? 0);
             if (!$sid) { echo json_encode(['ok' => false]); exit; }
             try {
                 $p = $pdo->prepare(
-                    "SELECT COALESCE(spl.price_sell, s.price_sell, 0) AS price_sell
-                     FROM stuffs s LEFT JOIN stuff_price_list spl ON spl.stuff_id = s.id
+                    "SELECT
+                        COALESCE(spl.price_sell, s.price_sell, spl.price, 0)          AS price_sell,
+                        COALESCE(spl.price_sell_imed, spl.price_imed, 0)               AS price_imed,
+                        COALESCE(spl.price_sell_faradis, spl.price_faradis, 0)         AS price_faradis,
+                        COALESCE(spl.price_sell_dermazon, spl.price_dermazon, 0)       AS price_dermazon,
+                        COALESCE(spl.price_buy, s.price_buy, 0)                        AS price_buy
+                     FROM stuffs s
+                     LEFT JOIN stuff_price_list spl ON spl.stuff_id = s.id
                      WHERE s.id = ? LIMIT 1"
                 );
                 $p->execute([$sid]);
-                $price = (int)$p->fetchColumn();
-            } catch (Throwable $e) { $price = 0; }
-            echo json_encode(['ok' => true, 'price' => $price]);
+                $row = $p->fetch(PDO::FETCH_ASSOC);
+            } catch (Throwable $e) { $row = null; }
+            if (!$row) $row = ['price_sell'=>0,'price_imed'=>0,'price_faradis'=>0,'price_dermazon'=>0,'price_buy'=>0];
+            echo json_encode(['ok' => true, 'prices' => $row, 'price' => (int)$row['price_sell']]);
             exit;
         }
 
@@ -1167,6 +1180,30 @@ require_once __DIR__ . '/../../templates/header.php';
                     </div>
                 </div>
 
+                <!-- سطح قیمت -->
+                <div style="margin-bottom:20px">
+                    <div class="inv-sec-title">سطح قیمت‌گذاری</div>
+                    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+                        <?php
+                        $priceLevels = [
+                            'price_sell'          => ['label'=>'قیمت فروش (پایه)',  'color'=>'#2563eb'],
+                            'price_sell_imed'     => ['label'=>'آیمد',               'color'=>'#7c3aed'],
+                            'price_sell_faradis'  => ['label'=>'فرادیس',             'color'=>'#0891b2'],
+                            'price_sell_dermazon' => ['label'=>'درمازون',            'color'=>'#d97706'],
+                        ];
+                        foreach ($priceLevels as $key => $pl): ?>
+                        <label id="lbl_<?= $key ?>" style="display:flex;align-items:center;gap:7px;cursor:pointer;padding:9px 15px;border-radius:10px;border:2px solid <?= $key==='price_sell' ? $pl['color'] : '#e2e8f0' ?>;background:<?= $key==='price_sell' ? '#eff6ff' : '#f8fafc' ?>;color:<?= $key==='price_sell' ? $pl['color'] : '#64748b' ?>;font-weight:600;font-size:.85rem;transition:all .15s">
+                            <input type="radio" name="priceLevelRadio" value="<?= $key ?>" <?= $key==='price_sell'?'checked':'' ?> onchange="onPriceLevelChange('<?= $key ?>','<?= $pl['color'] ?>')" style="accent-color:<?= $pl['color'] ?>">
+                            <?= $pl['label'] ?>
+                        </label>
+                        <?php endforeach; ?>
+                        <input type="hidden" id="selectedPriceLevel" value="price_sell">
+                    </div>
+                    <div id="priceLevelNote" style="margin-top:6px;font-size:.77rem;color:#64748b">
+                        💡 هنگام انتخاب کالا، قیمت بر اساس سطح انتخابی اعمال می‌شود.
+                    </div>
+                </div>
+
                 <!-- ردیف‌های کالا -->
                 <div class="inv-sec-title">ردیف‌های کالا / خدمات</div>
                 <div class="inv-items-section">
@@ -1573,6 +1610,28 @@ function selPerson(id,name){
 // ============================================================
 // Autocomplete کالا
 // ============================================================
+// قیمت بر اساس سطح انتخابی
+function getPriceByLevel(item) {
+    var level = document.getElementById('selectedPriceLevel').value || 'price_sell';
+    var p = parseInt(item[level]) || 0;
+    if (!p) p = parseInt(item['price']) || 0; // fallback به قیمت پایه
+    return p;
+}
+
+function onPriceLevelChange(level, color) {
+    document.getElementById('selectedPriceLevel').value = level;
+    // به‌روز کردن ظاهر label‌ها
+    var levels = ['price_sell','price_sell_imed','price_sell_faradis','price_sell_dermazon'];
+    var colors  = {'price_sell':'#2563eb','price_sell_imed':'#7c3aed','price_sell_faradis':'#0891b2','price_sell_dermazon':'#d97706'};
+    levels.forEach(function(k) {
+        var lbl = document.getElementById('lbl_'+k);
+        if (!lbl) return;
+        var active = (k === level);
+        var c = colors[k];
+        lbl.style.cssText = 'display:flex;align-items:center;gap:7px;cursor:pointer;padding:9px 15px;border-radius:10px;border:2px solid '+(active?c:'#e2e8f0')+';background:'+(active?'#f0f9ff':'#f8fafc')+';color:'+(active?c:'#64748b')+';font-weight:600;font-size:.85rem;transition:all .15s';
+    });
+}
+
 function onStuffSearch(idx,q){
     clearTimeout(stuffTimers[idx]);
     document.getElementById('sid-'+idx).value='';
@@ -1585,15 +1644,28 @@ function onStuffSearch(idx,q){
                 dd.innerHTML='<div class="ac-it nr">کالایی یافت نشد — شرح دستی وارد کنید.</div>';
             } else {
                 dd.innerHTML=res.results.map(function(c){
-                    return '<div class="ac-it" onclick="selStuff('+idx+','+c.id+',\''+escJ(c.name)+'\',\''+escJ(c.unit||'')+'\','+(parseInt(c.price)||0)+')">'
+                    var displayPrice = getPriceByLevel(c);
+                    return '<div class="ac-it" onclick="selStuffObj('+idx+','+JSON.stringify(c).replace(/'/g,"\\u0027")+')">'
                         +esc(c.name)+(c.unit?' <small style="color:#94a3b8">('+c.unit+')</small>':'')
-                        +' — <span style="color:#059669;direction:ltr;display:inline-block">'+numFa(c.price)+' ریال</span>'
+                        +' — <span style="color:#059669;direction:ltr;display:inline-block">'+numFa(displayPrice)+' ریال</span>'
                         +'</div>';
                 }).join('');
             }
             dd.classList.add('open');
         });
     },280);
+}
+function selStuffObj(idx, c) {
+    var price = getPriceByLevel(c);
+    document.getElementById('sid-'+idx).value=c.id;
+    document.getElementById('d-'+idx).value=c.name;
+    document.getElementById('u-'+idx).value=c.unit||'';
+    var pEl=document.getElementById('p-'+idx);
+    pEl.value=numFa(price);
+    document.getElementById('sdd-'+idx).classList.remove('open');
+    recalcRow(idx);
+    var qEl=document.getElementById('q-'+idx);
+    if(qEl){qEl.focus();qEl.select();}
 }
 function selStuff(idx,sid,name,unit,price){
     document.getElementById('sid-'+idx).value=sid;

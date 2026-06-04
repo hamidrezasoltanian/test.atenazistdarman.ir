@@ -30,6 +30,34 @@ if (!isset($_SESSION['user_id'])) {
     exit;
 }
 
+// --- ذخیره قیمت‌های کالا (AJAX) ---
+if ($isAjax && isset($_POST['action']) && $_POST['action'] === 'save_price') {
+    if (ob_get_length()) ob_clean();
+    header('Content-Type: application/json');
+    require_once __DIR__ . '/../../includes/auth.php';
+    if (!isset($_SESSION['user_id'])) { echo json_encode(['status'=>'error','message'=>'نشست منقضی']); exit; }
+    if (!csrf_verify($_POST['csrf_token'] ?? '')) { echo json_encode(['status'=>'error','message'=>'خطای امنیتی']); exit; }
+    $stuffId = (int)($_POST['stuff_id'] ?? 0);
+    if (!$stuffId) { echo json_encode(['status'=>'error','message'=>'کالا نامعتبر']); exit; }
+    $fields = ['price_sell','price_buy','price_sell_imed','price_sell_faradis','price_sell_dermazon','minimum_stock'];
+    $allowed = ['price','price_imed','price_faradis','price_dermazon'];
+    $set = []; $params = [];
+    foreach ($fields as $f) {
+        if (isset($_POST[$f])) { $set[] = "`$f`=?"; $params[] = (int)str_replace([',','،',' '], '', $_POST[$f]); }
+    }
+    foreach ($allowed as $f) {
+        if (isset($_POST[$f])) { $set[] = "`$f`=?"; $params[] = (int)str_replace([',','،',' '], '', $_POST[$f]); }
+    }
+    if (!$set) { echo json_encode(['status'=>'error','message'=>'داده‌ای ارسال نشد']); exit; }
+    try {
+        $params[] = $stuffId;
+        $pdo->prepare("INSERT INTO stuff_price_list (stuff_id) VALUES (?) ON DUPLICATE KEY UPDATE stuff_id=stuff_id")->execute([$stuffId]);
+        $pdo->prepare("UPDATE stuff_price_list SET ".implode(',',$set)." WHERE stuff_id=?")->execute($params);
+        echo json_encode(['status'=>'success','message'=>'قیمت‌ها با موفقیت ذخیره شدند']);
+    } catch (Throwable $e) { echo json_encode(['status'=>'error','message'=>'خطای دیتابیس']); }
+    exit;
+}
+
 // --- دریافت جزئیات کالا (AJAX) ---
 if ($isAjax && isset($_POST['action']) && $_POST['action'] === 'get_details') {
     if (ob_get_length()) ob_clean();
@@ -37,10 +65,12 @@ if ($isAjax && isset($_POST['action']) && $_POST['action'] === 'get_details') {
     $id = $_POST['id'] ?? 0;
     try {
         $stmt = $pdo->prepare("
-            SELECT s.*, p.price, p.price_imed, p.price_faradis, p.price_dermazon, 
+            SELECT s.*, p.price, p.price_imed, p.price_faradis, p.price_dermazon,
+                   p.price_sell, p.price_buy, p.price_sell_imed, p.price_sell_faradis,
+                   p.price_sell_dermazon, p.minimum_stock,
                    p.total_inventory, p.central_store, p.virtual_store, p.scrap_store
             FROM stuffs s
-            LEFT JOIN stuff_price_list p ON s.stuff_code = p.stuff_code
+            LEFT JOIN stuff_price_list p ON s.id = p.stuff_id
             WHERE s.id = ? AND s.is_delete = 0
         ");
         $stmt->execute([$id]);
@@ -488,6 +518,20 @@ $extraCss = '
         direction: ltr;
         text-align: left;
     }
+
+    .price-inp {
+        width: 100%;
+        padding: 7px 10px;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        font-size: .9rem;
+        font-family: Vazirmatn, sans-serif;
+        text-align: left;
+        direction: ltr;
+        box-sizing: border-box;
+        transition: border-color .2s;
+    }
+    .price-inp:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 2px #dbeafe; }
     
     @media (max-width: 640px) {
         .details-grid {
@@ -728,11 +772,40 @@ include __DIR__ . '/../../templates/sidebar.php';
                 <div class="details-row"><span class="details-label">تاریخ ثبت:</span><span class="details-value">${p.save_date ? new Date(p.save_date).toLocaleDateString('fa-IR') : '-'}</span></div>
             </div>
             <div class="details-card">
-                <h4>💰 قیمت و موجودی</h4>
-                <div class="details-row"><span class="details-label">قیمت اصلی:</span><span class="details-value">${numberFormat(p.price)} ریال</span></div>
-                <div class="details-row"><span class="details-label">قیمت آیمد:</span><span class="details-value">${numberFormat(p.price_imed)} ریال</span></div>
-                <div class="details-row"><span class="details-label">قیمت فرادیس:</span><span class="details-value">${numberFormat(p.price_faradis)} ریال</span></div>
-                <div class="details-row"><span class="details-label">قیمت درمازون:</span><span class="details-value">${numberFormat(p.price_dermazon)} ریال</span></div>
+                <h4>💰 قیمت‌گذاری</h4>
+                <form id="priceForm" onsubmit="savePrices(event,${p.id})">
+                <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+                    <div>
+                        <label style="font-size:.78rem;color:#64748b;display:block;margin-bottom:3px">قیمت فروش (ریال)</label>
+                        <input name="price_sell" class="price-inp" value="${p.price_sell||0}" placeholder="0">
+                    </div>
+                    <div>
+                        <label style="font-size:.78rem;color:#64748b;display:block;margin-bottom:3px">قیمت خرید / بهای تمام‌شده</label>
+                        <input name="price_buy" class="price-inp" value="${p.price_buy||0}" placeholder="0">
+                    </div>
+                    <div>
+                        <label style="font-size:.78rem;color:#64748b;display:block;margin-bottom:3px">قیمت آیمد</label>
+                        <input name="price_sell_imed" class="price-inp" value="${p.price_sell_imed||p.price_imed||0}" placeholder="0">
+                    </div>
+                    <div>
+                        <label style="font-size:.78rem;color:#64748b;display:block;margin-bottom:3px">قیمت فرادیس</label>
+                        <input name="price_sell_faradis" class="price-inp" value="${p.price_sell_faradis||p.price_faradis||0}" placeholder="0">
+                    </div>
+                    <div>
+                        <label style="font-size:.78rem;color:#64748b;display:block;margin-bottom:3px">قیمت درمازون</label>
+                        <input name="price_sell_dermazon" class="price-inp" value="${p.price_sell_dermazon||p.price_dermazon||0}" placeholder="0">
+                    </div>
+                    <div>
+                        <label style="font-size:.78rem;color:#64748b;display:block;margin-bottom:3px">حداقل موجودی (هشدار)</label>
+                        <input name="minimum_stock" class="price-inp" value="${p.minimum_stock||0}" placeholder="0">
+                    </div>
+                </div>
+                <button type="submit" style="width:100%;padding:9px;background:#2563eb;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:.9rem;font-family:inherit">💾 ذخیره قیمت‌ها</button>
+                </form>
+            </div>
+            <div class="details-card">
+                <h4>📦 موجودی انبار</h4>
                 <div class="details-row"><span class="details-label">موجودی کل:</span><span class="details-value">${numberFormat(p.total_inventory)}</span></div>
                 <div class="details-row"><span class="details-label">انبار مرکزی:</span><span class="details-value">${numberFormat(p.central_store)}</span></div>
                 <div class="details-row"><span class="details-label">انبار مجازی:</span><span class="details-value">${numberFormat(p.virtual_store)}</span></div>
@@ -742,6 +815,35 @@ include __DIR__ . '/../../templates/sidebar.php';
         `;
     }
     
+    function savePrices(e, stuffId) {
+        e.preventDefault();
+        const form = document.getElementById('priceForm');
+        const fd = new FormData(form);
+        fd.append('action', 'save_price');
+        fd.append('stuff_id', stuffId);
+        const btn = form.querySelector('button[type=submit]');
+        btn.disabled = true; btn.textContent = '⏳ در حال ذخیره...';
+        fetch(window.location.href, {
+            method: 'POST',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            body: fd
+        })
+        .then(r => r.json())
+        .then(d => {
+            btn.disabled = false;
+            if (d.status === 'success') {
+                btn.textContent = '✅ ذخیره شد';
+                btn.style.background = '#16a34a';
+                setTimeout(() => { btn.textContent = '💾 ذخیره قیمت‌ها'; btn.style.background = '#2563eb'; }, 2000);
+            } else {
+                btn.textContent = '❌ خطا: ' + (d.message || '');
+                btn.style.background = '#dc2626';
+                setTimeout(() => { btn.textContent = '💾 ذخیره قیمت‌ها'; btn.style.background = '#2563eb'; }, 3000);
+            }
+        })
+        .catch(() => { btn.disabled = false; btn.textContent = '❌ خطای شبکه'; });
+    }
+
     function closeModal() { document.getElementById('productModal').style.display = 'none'; }
     function escapeHtml(str) { if(!str) return ''; return str.replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m])); }
     function numberFormat(num) { if(num === null || num === undefined) return '0'; return parseFloat(num).toLocaleString('fa-IR'); }
