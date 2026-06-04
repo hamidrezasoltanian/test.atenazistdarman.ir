@@ -456,10 +456,59 @@ crm_opportunities ──opportunity_id──► fin_invoices ──── fin_in
 
 ---
 
+---
+
+## ✅ مرحله ۹ — تکمیل‌شده (بررسی و رفع مشکلات دیتابیس)
+
+### ✅ ۹.۱ — رفع مشکلات ساختاری (`phase9_db_fixes.sql`)
+- [x] `AUTO_INCREMENT` به `fin_chart_of_accounts.id` اضافه شد (بحرانی)
+- [x] `is_deleted` به ۱۱ جدول فاقد soft-delete اضافه شد
+- [x] `updated_at` به ۷ جدول فاقد timestamp اضافه شد
+- [x] ایندکس روی ۵ ستون FK اضافه شد (crm_followup_log, hr_commissions, attendance_checkins, ...)
+- [x] ایندکس‌های عملکردی روی contracts, warranty, support_tickets, fin_quotes
+
+### ✅ ۹.۲ — رفع مشکلات معماری (`phase10_architecture_fixes.sql`)
+- [x] یکپارچه‌سازی `customers ↔ fin_persons`: ستون `person_id` + FK به `customers` اضافه شد
+- [x] یکپارچه‌سازی تاریخ: `DATE` میلادی → `VARCHAR(12)` شمسی در جداول مرحله ۸
+- [x] یکپارچه‌سازی مبلغ: `DECIMAL(20,0)` → `BIGINT` در ۶ جدول مرحله ۸
+- [x] ۳۰+ Foreign Key Constraint با `ON DELETE SET NULL / CASCADE` مناسب
+- [x] تمام ستون‌های FK از `INT DEFAULT 0` به `INT UNSIGNED DEFAULT NULL` تبدیل شدند
+
+---
+
+## ✅ مرحله ۱۰ — تکمیل‌شده (امنیت + ماژول واردات + قیمت‌گذاری)
+
+### ✅ ۱۰.۱ — رفع ۸ مشکل امنیتی
+- [x] `attendance_checkin_manage.php`: guard مدیریت برای `edit_time` و `save_settings`
+- [x] `import_dashboard.php`: `csrf_verify()` بدون آرگومان، SQL خام notDone، MIME validation آپلود
+- [x] `fin_invoice_sell.php`: SQL خام در بازیابی شماره فاکتور
+- [x] `customer/index.php`: `rand()` → `random_int()` برای OTP
+- [x] `mission_view.php`: `mission_status_label()` به نسخه role-aware
+
+### ✅ ۱۰.۲ — داشبورد ERP بازطراحی شده
+- [x] کارت‌های KPI سفید با indicator روند (↑/↓)
+- [x] پنل هشدار: چک‌های سررسید ۱۴ روز + کالاهای کم‌موجودی
+- [x] فید فعالیت با timestamp شمسی
+
+### ✅ ۱۰.۳ — ماژول واردات (`import_dashboard.php`)
+- [x] ۵ مرحله پیش‌فرض: ثبت سفارش، ترخیص گمرک، حمل‌ونقل، انبارداری، اداره کل تجهیزات
+- [x] مراحل کاملاً سفارشی (افزودن/ویرایش/غیرفعال)
+- [x] ثبت هزینه با رسید + آپلود اسناد با MIME validation
+- [x] منوی مستقل در سایدبار
+
+### ✅ ۱۰.۴ — ماژول قیمت‌گذاری کامل (`phase11_price_sell_buy.sql`)
+- [x] ستون‌های `price_sell`, `price_buy`, `price_sell_imed/faradis/dermazon` به `stuff_price_list` اضافه شد
+- [x] `products_list.php`: فرم inline ویرایش ۶ سطح قیمت + حداقل موجودی
+- [x] `fin_invoice_sell.php`: انتخابگر سطح قیمت (پایه/آیمد/فرادیس/درمازون) — قیمت خودکار پر می‌شود
+- [x] `fin_quote.php`: رفع schema (DATE→VARCHAR12، DECIMAL→BIGINT)
+
+---
+
 ## بهبودهای فنی باقی‌مانده (اختیاری)
 - [ ] تلگرام بات — گزارش روزانه از `/api/v1/dashboard/summary`
 - [ ] React Native / Flutter کلاینت از `/api/v1/*`
 - [ ] WebSocket برای chat realtime (جایگزین polling)
+- [ ] sync خودکار `customers ↔ fin_persons` بر اساس شماره موبایل
 
 ---
 
@@ -481,3 +530,7 @@ crm_opportunities ──opportunity_id──► fin_invoices ──── fin_in
 | ۱۴۰۵/۰۳/۱۳ | — | مرحله ۶: تکمیل حلقه مالی + حقوق + SMS چک |
 | ۱۴۰۵/۰۳/۱۴ | — | مرحله ۷: QR حضور + Excel + PWA |
 | ۱۴۰۵/۰۳/۱۴ | — | مرحله ۸: API endpoints جدید + تیکت پشتیبانی پورتال مشتری |
+| ۱۴۰۵/۰۳/۱۴ | `2ccea26` | مرحله ۹: رفع ۸ مشکل امنیتی |
+| ۱۴۰۵/۰۳/۱۴ | `7198075` | مرحله ۹: رفع مشکلات ساختاری دیتابیس |
+| ۱۴۰۵/۰۳/۱۴ | `f9ead57` | مرحله ۱۰: رفع مشکلات معماری دیتابیس |
+| ۱۴۰۵/۰۳/۱۴ | `91ea6f3` | مرحله ۱۰: ماژول قیمت‌گذاری کامل |
