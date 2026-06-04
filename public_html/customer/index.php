@@ -123,8 +123,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['send_otp']) && !$port
             $messageType = 'error';
             $step = 'phone';
         } else {
-            // تولید OTP
-            $otp = str_pad(rand(10000, 99999), 5, '0', STR_PAD_LEFT);
+            // تولید OTP امن
+            $otp = str_pad(random_int(10000, 99999), 5, '0', STR_PAD_LEFT);
             $expires = date('Y-m-d H:i:s', strtotime('+5 minutes'));
             // ذخیره OTP در جدول (upsert)
             try {

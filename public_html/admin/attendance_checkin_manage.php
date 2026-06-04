@@ -9,8 +9,10 @@ requireLogin();
 require_once __DIR__ . '/../../includes/db.php';
 require_once __DIR__ . '/../../includes/functions.php';
 
-$isAjax = !empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest';
-$userId = (int)$_SESSION['user_id'];
+$isAjax  = !empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest';
+$userId  = (int)$_SESSION['user_id'];
+$userRole= $_SESSION['role'] ?? '';
+$isAdmin = in_array($userRole, ['admin','management'], true);
 
 function getSetting(PDO $pdo, string $key, string $default = ''): string {
     try {
@@ -127,8 +129,9 @@ if ($isAjax) {
         exit;
     }
 
-    // ویرایش ساعت
+    // ویرایش ساعت — فقط ادمین
     if ($action === 'edit_time') {
+        if (!$isAdmin) { echo json_encode(['ok'=>false,'msg'=>'دسترسی ندارید']); exit; }
         $id      = (int)($_POST['id'] ?? 0);
         $inTime  = trim($_POST['check_in_time']  ?? '');
         $outTime = trim($_POST['check_out_time'] ?? '');
@@ -140,8 +143,9 @@ if ($isAjax) {
         exit;
     }
 
-    // تنظیمات ذخیره
+    // تنظیمات ذخیره — فقط ادمین
     if ($action === 'save_settings') {
+        if (!$isAdmin) { echo json_encode(['ok'=>false,'msg'=>'دسترسی ندارید']); exit; }
         $fields = ['checkin_office_subnet','checkin_subnet_strict','checkin_qr_ttl','checkin_workday_start','checkin_workday_end'];
         $up = $pdo->prepare("INSERT INTO settings (setting_key,setting_value) VALUES(?,?) ON DUPLICATE KEY UPDATE setting_value=?");
         foreach ($fields as $f) {

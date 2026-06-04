@@ -149,13 +149,25 @@ $cnt = $pdo->prepare("SELECT COUNT(*) FROM mission_items WHERE request_id=? AND 
 $cnt->execute([$requestId]);
 $notApprovedCount = (int)$cnt->fetchColumn();
 
-function mission_status_label($status) {
-    $map = [
+// همان signature با missions.php (role-aware)
+function mission_status_label($status, $role = '') {
+    $isPriv = in_array($role, ['admin','management','finance_expert','finance_manager'], true);
+    $map = $isPriv ? [
         'pending'            => 'در انتظار تأیید مدیر',
-        'pending_admin'      => 'در انتظار تأیید مدیریت',
+        'pending_admin'      => 'در انتظار تأیید مدیریت کل',
         'approved'           => 'تأیید شده',
-        'expenses_open'      => 'ثبت هزینه‌ها',
-        'expenses_submitted' => 'ارسال به واحد مالی',
+        'expenses_open'      => 'ثبت هزینه توسط کارمند',
+        'expenses_submitted' => 'ارسال هزینه به مالی',
+        'finance_process'    => 'در بررسی مالی',
+        'finance_review'     => 'در بررسی مالی',
+        'completed'          => 'تسویه شده',
+        'rejected'           => 'رد شده',
+    ] : [
+        'pending'            => 'در انتظار تأیید',
+        'pending_admin'      => 'در انتظار تأیید',
+        'approved'           => 'تأیید شده — ثبت هزینه',
+        'expenses_open'      => 'در حال ثبت هزینه',
+        'expenses_submitted' => 'ارسال شده به مالی',
         'finance_process'    => 'بررسی مالی',
         'finance_review'     => 'بررسی مالی',
         'completed'          => 'تسویه شده',

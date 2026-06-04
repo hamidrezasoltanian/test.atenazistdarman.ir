@@ -175,7 +175,7 @@ if (!empty($_SERVER['HTTP_X_REQUESTED_WITH'])) {
 
     // ایجاد سفارش جدید
     if ($act === 'create_order' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-        csrf_verify();
+        if (!csrf_verify($_POST["csrf_token"] ?? "")) { echo json_encode(["ok"=>false,"msg"=>"CSRF invalid"]); exit; }
         try {
             $num = 'IMP-' . date('Y') . '-' . str_pad($pdo->query("SELECT COALESCE(MAX(id),0)+1 FROM import_orders")->fetchColumn(), 4, '0', STR_PAD_LEFT);
             $stmt = $pdo->prepare("INSERT INTO import_orders (order_number,title,supplier_name,supplier_country,person_id,currency,est_cost,notes,created_by) VALUES (?,?,?,?,?,?,?,?,?)");
@@ -204,7 +204,7 @@ if (!empty($_SERVER['HTTP_X_REQUESTED_WITH'])) {
 
     // آپدیت وضعیت مرحله
     if ($act === 'update_stage' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-        csrf_verify();
+        if (!csrf_verify($_POST["csrf_token"] ?? "")) { echo json_encode(["ok"=>false,"msg"=>"CSRF invalid"]); exit; }
         try {
             $oid   = (int)$_POST['order_id'];
             $sid   = (int)$_POST['stage_id'];
@@ -219,8 +219,11 @@ if (!empty($_SERVER['HTTP_X_REQUESTED_WITH'])) {
             )->execute([$oid,$sid,$st,$start?:null,$end?:null,$notes]);
 
             // اگر همه مراحل completed بود → سفارش را completed کن
-            $notDone = (int)$pdo->prepare("SELECT COUNT(*) FROM import_order_stages WHERE order_id=? AND status NOT IN ('completed','skipped')")->execute([$oid]) && $pdo->query("SELECT COUNT(*) FROM import_order_stages WHERE order_id=$oid AND status NOT IN ('completed','skipped')")->fetchColumn();
-            if ($notDone == 0) $pdo->prepare("UPDATE import_orders SET status='completed' WHERE id=?")->execute([$oid]);
+            $ndStmt = $pdo->prepare("SELECT COUNT(*) FROM import_order_stages WHERE order_id=? AND status NOT IN ('completed','skipped')");
+            $ndStmt->execute([$oid]);
+            if ((int)$ndStmt->fetchColumn() === 0) {
+                $pdo->prepare("UPDATE import_orders SET status='completed' WHERE id=?")->execute([$oid]);
+            }
 
             echo json_encode(['ok'=>true], JSON_UNESCAPED_UNICODE);
         } catch (Exception $e) { echo json_encode(['ok'=>false,'msg'=>$e->getMessage()]); }
@@ -229,15 +232,16 @@ if (!empty($_SERVER['HTTP_X_REQUESTED_WITH'])) {
 
     // افزودن هزینه
     if ($act === 'add_cost' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-        csrf_verify();
+        if (!csrf_verify($_POST["csrf_token"] ?? "")) { echo json_encode(["ok"=>false,"msg"=>"CSRF invalid"]); exit; }
         try {
             $receiptFile = null;
             if (!empty($_FILES['receipt']['name'])) {
-                $ext = strtolower(pathinfo($_FILES['receipt']['name'], PATHINFO_EXTENSION));
-                if (!in_array($ext, ['jpg','jpeg','png','pdf','xlsx','docx'])) throw new Exception('نوع فایل مجاز نیست');
-                $fn = 'rcpt_' . time() . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
-                move_uploaded_file($_FILES['receipt']['tmp_name'], $uploadDir . $fn);
-                $receiptFile = $fn;
+                $allowed = ['image/jpeg','image/png','application/pdf',
+                            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                            'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+                $result = upload_secure_file($_FILES['receipt']['tmp_name'], $_FILES['receipt']['name'], $uploadDir, $allowed, 'rcpt_');
+                if (!$result) throw new Exception('نوع فایل مجاز نیست یا آپلود ناموفق');
+                $receiptFile = $result['name'];
             }
             $stmt = $pdo->prepare("INSERT INTO import_costs (order_id,stage_id,cost_type,description,amount,currency,paid_at,receipt_file,created_by) VALUES (?,?,?,?,?,?,?,?,?)");
             $stmt->execute([
@@ -258,13 +262,16 @@ if (!empty($_SERVER['HTTP_X_REQUESTED_WITH'])) {
 
     // آپلود مدرک
     if ($act === 'upload_doc' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-        csrf_verify();
+        if (!csrf_verify($_POST["csrf_token"] ?? "")) { echo json_encode(["ok"=>false,"msg"=>"CSRF invalid"]); exit; }
         try {
             if (empty($_FILES['file']['name'])) throw new Exception('فایلی انتخاب نشده');
-            $ext = strtolower(pathinfo($_FILES['file']['name'], PATHINFO_EXTENSION));
-            if (!in_array($ext, ['jpg','jpeg','png','pdf','xlsx','docx','zip','rar'])) throw new Exception('نوع فایل مجاز نیست');
-            $fn = 'doc_' . time() . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
-            move_uploaded_file($_FILES['file']['tmp_name'], $uploadDir . $fn);
+            $docAllowed = ['image/jpeg','image/png','application/pdf',
+                           'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                           'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                           'application/zip','application/x-rar-compressed','application/x-zip-compressed'];
+            $docResult = upload_secure_file($_FILES['file']['tmp_name'], $_FILES['file']['name'], $uploadDir, $docAllowed, 'doc_');
+            if (!$docResult) throw new Exception('نوع فایل مجاز نیست یا آپلود ناموفق');
+            $fn = $docResult['name'];
             $stmt = $pdo->prepare("INSERT INTO import_documents (order_id,stage_id,filename,original_name,doc_type,uploaded_by) VALUES (?,?,?,?,?,?)");
             $stmt->execute([
                 (int)$_POST['order_id'],
@@ -281,7 +288,7 @@ if (!empty($_SERVER['HTTP_X_REQUESTED_WITH'])) {
 
     // حذف مدرک
     if ($act === 'delete_doc' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-        csrf_verify();
+        if (!csrf_verify($_POST["csrf_token"] ?? "")) { echo json_encode(["ok"=>false,"msg"=>"CSRF invalid"]); exit; }
         $pdo->prepare("UPDATE import_documents SET is_deleted=1 WHERE id=?")->execute([(int)$_POST['id']]);
         echo json_encode(['ok'=>true]);
         exit;
@@ -296,7 +303,7 @@ if (!empty($_SERVER['HTTP_X_REQUESTED_WITH'])) {
 
     // ذخیره مرحله جدید یا ویرایش
     if ($act === 'save_stage' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-        csrf_verify();
+        if (!csrf_verify($_POST["csrf_token"] ?? "")) { echo json_encode(["ok"=>false,"msg"=>"CSRF invalid"]); exit; }
         if (!$isAdmin) { echo json_encode(['ok'=>false,'msg'=>'دسترسی ندارید']); exit; }
         $id   = (int)($_POST['id'] ?? 0);
         $name = htmlspecialchars(trim($_POST['name'] ?? ''));
@@ -316,7 +323,7 @@ if (!empty($_SERVER['HTTP_X_REQUESTED_WITH'])) {
 
     // فعال/غیرفعال مرحله
     if ($act === 'toggle_stage' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-        csrf_verify();
+        if (!csrf_verify($_POST["csrf_token"] ?? "")) { echo json_encode(["ok"=>false,"msg"=>"CSRF invalid"]); exit; }
         if (!$isAdmin) { echo json_encode(['ok'=>false,'msg'=>'دسترسی ندارید']); exit; }
         $id = (int)$_POST['id'];
         $row = $pdo->prepare("SELECT is_system,is_active FROM import_stages_def WHERE id=?");

@@ -547,7 +547,9 @@ function saveInvoiceToDb($pdo, $type, $targetStatus, $userId, $fiscalYearId) {
             $targetStatus, $notes, $invType, $editId,
         ]);
         $invoiceId     = $editId;
-        $invoiceNumber = $pdo->query("SELECT invoice_number FROM fin_invoices WHERE id=$editId")->fetchColumn();
+        $invNumStmt = $pdo->prepare("SELECT invoice_number FROM fin_invoices WHERE id=?");
+        $invNumStmt->execute([$editId]);
+        $invoiceNumber = $invNumStmt->fetchColumn();
     } else {
         $invoiceNumber = nextInvoiceNumber($pdo, $type);
         // اضافه‌کردن ستون invoice_type در صورت نیاز
