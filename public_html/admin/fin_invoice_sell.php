@@ -638,6 +638,59 @@ function saveInvoiceToDb($pdo, $type, $targetStatus, $userId, $fiscalYearId) {
 
     $pdo->commit();
 
+    // ── ثبت خودکار پورسانت هنگام تأیید فاکتور فروش ──
+    if ($targetStatus === 'confirmed' && $type === 'sell') {
+        try {
+            $plan = $pdo->query("SELECT * FROM hr_commission_plans WHERE is_active=1 LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+            if ($plan) {
+                $invYear    = (int)date('Y', strtotime($invDate));
+                $invMonth   = (int)date('n', strtotime($invDate));
+                $invQuarter = (int)ceil($invMonth / 3);
+
+                $kpiStmt = $pdo->prepare("SELECT score FROM hr_kpi_scores WHERE user_id=? AND year=? AND quarter=?");
+                $kpiStmt->execute([$userId, $invYear, $invQuarter]);
+                $kpiScore = (float)($kpiStmt->fetchColumn() ?: 0);
+                $stepRate = $kpiScore >= (float)$plan['kpi_min_score']
+                    ? (float)$plan['kpi_step_rate'] : (float)$plan['step_rate'];
+
+                $cumStmt = $pdo->prepare(
+                    "SELECT COALESCE(SUM(net_base),0) FROM hr_commissions
+                     WHERE user_id=? AND year=? AND month=? AND status!='cancelled'"
+                );
+                $cumStmt->execute([$userId, $invYear, $invMonth]);
+                $cumulativeBefore = (int)$cumStmt->fetchColumn();
+
+                $netBase         = $totalAmount;
+                $cumulativeAfter  = $cumulativeBefore + $netBase;
+                $threshold       = (int)$plan['threshold'];
+                $stepSize        = (int)$plan['step_size'];
+                $baseRate        = (float)$plan['base_rate'];
+
+                if ($cumulativeAfter <= $threshold || $stepSize <= 0) {
+                    $commRate = $baseRate;
+                } else {
+                    $steps    = (int)floor(($cumulativeAfter - $threshold) / $stepSize);
+                    $commRate = $baseRate + $steps * $stepRate;
+                }
+                $commAmount = (int)round($netBase * $commRate / 100);
+
+                $pdo->prepare(
+                    "INSERT INTO hr_commissions
+                        (user_id,invoice_id,year,month,invoice_amount,extra_discount,net_base,
+                         cumulative_before,commission_rate,commission_amount,status,created_at)
+                     VALUES (?,?,?,?,?,0,?,?,?,?,'pending',NOW())
+                     ON DUPLICATE KEY UPDATE
+                        invoice_amount=VALUES(invoice_amount),net_base=VALUES(net_base),
+                        cumulative_before=VALUES(cumulative_before),commission_rate=VALUES(commission_rate),
+                        commission_amount=VALUES(commission_amount),status='pending',updated_at=NOW()"
+                )->execute([
+                    $userId, $invoiceId, $invYear, $invMonth,
+                    $totalAmount, $netBase, $cumulativeBefore, $commRate, $commAmount,
+                ]);
+            }
+        } catch (Throwable $e) { /* پورسانت اختیاری است */ }
+    }
+
     // ── حواله خودکار انبار پس از تأیید فاکتور ──
     if ($targetStatus === 'confirmed') {
         try {

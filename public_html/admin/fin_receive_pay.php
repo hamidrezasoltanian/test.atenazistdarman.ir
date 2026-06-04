@@ -315,6 +315,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isAjax) {
                      WHERE id = ? AND is_deleted = 0"
                 );
                 $updInv->execute([$amount, $amount, $amount, $invoiceId]);
+
+                // اگر فاکتور کاملاً تسویه شد، پورسانت مرتبط قابل پرداخت می‌شود
+                $newStatus = $pdo->query("SELECT status FROM fin_invoices WHERE id=$invoiceId")->fetchColumn();
+                if ($newStatus === 'paid') {
+                    try {
+                        $pdo->prepare(
+                            "UPDATE hr_commissions SET status='payable',updated_at=NOW() WHERE invoice_id=? AND status='pending'"
+                        )->execute([$invoiceId]);
+                    } catch (Throwable $e) {}
+                }
             }
 
             // به‌روزرسانی موجودی بانک/صندوق
