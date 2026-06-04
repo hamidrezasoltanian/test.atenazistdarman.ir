@@ -781,6 +781,166 @@ if ($isAjax) {
         exit;
     }
 
+    // ── گزارش خرید ────────────────────────────────────────────────
+    if ($action === 'purchases_report') {
+        $result = [
+            'labels'         => [],
+            'purchases'      => [],
+            'paid'           => [],
+            'outstanding'    => [],
+            'total_purchase' => 0,
+            'total_paid'     => 0,
+            'top_suppliers'  => [],
+            'invoice_count'  => 0,
+        ];
+        try {
+            $where  = "type='buy' AND is_deleted=0";
+            $params = [];
+            if ($fyId > 0) { $where .= ' AND fiscal_year_id=?'; $params[] = $fyId; }
+
+            $st = $pdo->prepare(
+                "SELECT SUBSTRING(invoice_date,1,7) AS month,
+                        SUM(total_amount) AS total, SUM(paid_amount) AS paid, COUNT(id) AS cnt
+                 FROM fin_invoices WHERE $where
+                 GROUP BY SUBSTRING(invoice_date,1,7) ORDER BY 1"
+            );
+            $st->execute($params);
+            foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                $result['labels'][]     = $r['month'];
+                $result['purchases'][]  = (int)$r['total'];
+                $result['paid'][]       = (int)$r['paid'];
+                $result['outstanding'][]= (int)$r['total'] - (int)$r['paid'];
+                $result['total_purchase'] += (int)$r['total'];
+                $result['total_paid']     += (int)$r['paid'];
+                $result['invoice_count']  += (int)$r['cnt'];
+            }
+            $result['total_outstanding'] = $result['total_purchase'] - $result['total_paid'];
+
+            // تامین‌کنندگان برتر
+            $st2 = $pdo->prepare(
+                "SELECT COALESCE(p.company_name, p.name, i.customer_name, 'نامشخص') AS supplier,
+                        SUM(i.total_amount) AS total, COUNT(i.id) AS cnt
+                 FROM fin_invoices i LEFT JOIN fin_persons p ON p.id=i.person_id
+                 WHERE i.type='buy' AND i.is_deleted=0
+                 GROUP BY i.person_id ORDER BY total DESC LIMIT 8"
+            );
+            $st2->execute();
+            $result['top_suppliers'] = $st2->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Throwable $e) {}
+        echo json_encode(['ok' => true, 'data' => $result]);
+        exit;
+    }
+
+    // ── جریان نقدی ────────────────────────────────────────────────
+    if ($action === 'cashflow_report') {
+        $result = [
+            'labels'   => [],
+            'inflow'   => [],
+            'outflow'  => [],
+            'net'      => [],
+            'total_in' => 0, 'total_out' => 0, 'net_total' => 0,
+        ];
+        try {
+            $where  = "is_deleted=0";
+            $params = [];
+            if ($fyId > 0) { $where .= " AND fiscal_year_id=?"; $params[] = $fyId; }
+
+            // وصولی ماهانه (پرداخت‌شده فاکتور فروش)
+            $stIn = $pdo->prepare(
+                "SELECT SUBSTRING(invoice_date,1,7) AS month, SUM(paid_amount) AS total
+                 FROM fin_invoices WHERE type='sell' AND $where
+                 GROUP BY 1 ORDER BY 1"
+            );
+            $stIn->execute($params);
+            $inflows = [];
+            foreach ($stIn->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                $inflows[$r['month']] = (int)$r['total'];
+            }
+
+            // پرداختی ماهانه (فاکتور خرید + هزینه)
+            $stOut = $pdo->prepare(
+                "SELECT SUBSTRING(invoice_date,1,7) AS month, SUM(paid_amount) AS total
+                 FROM fin_invoices WHERE type='buy' AND $where
+                 GROUP BY 1 ORDER BY 1"
+            );
+            $stOut->execute($params);
+            $outflows = [];
+            foreach ($stOut->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                $outflows[$r['month']] = (int)$r['total'];
+            }
+
+            // هزینه‌ها
+            $stExp = $pdo->prepare(
+                "SELECT SUBSTRING(expense_date,1,7) AS month, SUM(amount) AS total
+                 FROM fin_expenses WHERE is_deleted=0 GROUP BY 1"
+            );
+            $stExp->execute();
+            foreach ($stExp->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                $outflows[$r['month']] = ($outflows[$r['month']] ?? 0) + (int)$r['total'];
+            }
+
+            $months = array_unique(array_merge(array_keys($inflows), array_keys($outflows)));
+            sort($months);
+
+            foreach ($months as $m) {
+                $in  = $inflows[$m]  ?? 0;
+                $out = $outflows[$m] ?? 0;
+                $result['labels'][]  = $m;
+                $result['inflow'][]  = $in;
+                $result['outflow'][] = $out;
+                $result['net'][]     = $in - $out;
+                $result['total_in']  += $in;
+                $result['total_out'] += $out;
+            }
+            $result['net_total'] = $result['total_in'] - $result['total_out'];
+        } catch (Throwable $e) {}
+        echo json_encode(['ok' => true, 'data' => $result]);
+        exit;
+    }
+
+    // ── خلاصه KPI ─────────────────────────────────────────────────
+    if ($action === 'kpi_summary') {
+        $r = ['ok' => true, 'data' => [
+            'total_sales'      => 0, 'total_purchases'  => 0,
+            'total_collected'  => 0, 'total_outstanding'=> 0,
+            'overdue_invoices' => 0, 'pending_cheques'  => 0,
+            'total_expenses'   => 0, 'net_profit'       => 0,
+        ]];
+        try {
+            $p = []; $w = "is_deleted=0";
+            if ($fyId > 0) { $w .= " AND fiscal_year_id=?"; $p[] = $fyId; }
+
+            $st = $pdo->prepare("SELECT type, SUM(total_amount) t, SUM(paid_amount) pd FROM fin_invoices WHERE $w GROUP BY type");
+            $st->execute($p);
+            foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                if ($row['type'] === 'sell') {
+                    $r['data']['total_sales']      = (int)$row['t'];
+                    $r['data']['total_collected']  = (int)$row['pd'];
+                    $r['data']['total_outstanding']= (int)$row['t'] - (int)$row['pd'];
+                }
+                if ($row['type'] === 'buy') {
+                    $r['data']['total_purchases']  = (int)$row['t'];
+                }
+            }
+
+            $st2 = $pdo->prepare("SELECT COUNT(*) FROM fin_invoices WHERE type='sell' AND status='confirmed' AND paid_amount < total_amount AND due_date < CURDATE() AND is_deleted=0");
+            $st2->execute();
+            $r['data']['overdue_invoices'] = (int)$st2->fetchColumn();
+
+            $st3 = $pdo->prepare("SELECT COUNT(*) FROM fin_cheques WHERE status='pending' AND due_date <= DATE_ADD(CURDATE(),INTERVAL 7 DAY) AND is_deleted=0");
+            $st3->execute();
+            $r['data']['pending_cheques']  = (int)$st3->fetchColumn();
+
+            $st4 = $pdo->prepare("SELECT COALESCE(SUM(amount),0) FROM fin_expenses WHERE is_deleted=0");
+            $st4->execute();
+            $r['data']['total_expenses']   = (int)$st4->fetchColumn();
+
+            $r['data']['net_profit'] = $r['data']['total_sales'] - $r['data']['total_purchases'] - $r['data']['total_expenses'];
+        } catch (Throwable $e) {}
+        echo json_encode($r);
+        exit;
+    }
+
     // اکشن ناشناخته
     echo json_encode(['ok' => false, 'msg' => 'اکشن نامعتبر']);
     exit;
@@ -909,6 +1069,18 @@ include __DIR__ . '/../../templates/header.php';
 .cheque-filters { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
 .rep-filter-select { border: 1px solid #e2e8f0; border-radius: 10px; padding: 8px 14px; font-family: inherit; font-size: .88rem; color: #1e293b; outline: none; }
 
+/* ── KPI Bar ── */
+.kpi-bar { display:flex; gap:12px; flex-wrap:wrap; background:#fff; border-radius:14px; padding:16px 20px; box-shadow:0 2px 10px rgba(0,0,0,.05); border:1px solid #e2e8f0; margin-bottom:20px; opacity:0.4; transition:opacity .4s; }
+.kpi-item { display:flex; align-items:center; gap:10px; flex:1; min-width:140px; }
+.kpi-icon { width:38px; height:38px; border-radius:9px; display:flex; align-items:center; justify-content:center; font-size:1.1rem; flex-shrink:0; }
+.kpi-val { font-size:.95rem; font-weight:700; color:#1e293b; white-space:nowrap; }
+.kpi-val.green  { color:#059669; }
+.kpi-val.red    { color:#dc2626; }
+.kpi-val.amber  { color:#d97706; }
+.kpi-val.purple { color:#7c3aed; }
+.kpi-lbl { font-size:.72rem; color:#94a3b8; margin-top:1px; }
+@media(max-width:768px){ .kpi-item{ min-width:calc(50% - 6px); } }
+
 /* ── لودینگ ── */
 .rep-loading { text-align: center; padding: 60px 20px; color: #64748b; font-size: .95rem; }
 .rep-loading i { font-size: 2rem; display: block; margin-bottom: 12px; animation: spin 1s linear infinite; }
@@ -1006,6 +1178,40 @@ include __DIR__ . '/../../templates/header.php';
         <button class="rep-tab-btn" onclick="switchTab(8)" id="tab-btn-8">
             <i class="fas fa-exchange-alt"></i> مقایسه دوره‌ای
         </button>
+        <button class="rep-tab-btn" onclick="switchTab(9)" id="tab-btn-9">
+            <i class="fas fa-shopping-cart"></i> گزارش خرید
+        </button>
+        <button class="rep-tab-btn" onclick="switchTab(10)" id="tab-btn-10">
+            <i class="fas fa-water"></i> جریان نقدی
+        </button>
+    </div>
+
+    <!-- KPI cards ثابت بالای صفحه -->
+    <div class="kpi-bar" id="kpiBar">
+        <div class="kpi-item">
+            <div class="kpi-icon" style="background:#eff6ff">💰</div>
+            <div><div class="kpi-val" id="kpiSales">—</div><div class="kpi-lbl">فروش کل</div></div>
+        </div>
+        <div class="kpi-item">
+            <div class="kpi-icon" style="background:#ecfdf5">✅</div>
+            <div><div class="kpi-val green" id="kpiCollected">—</div><div class="kpi-lbl">وصول‌شده</div></div>
+        </div>
+        <div class="kpi-item">
+            <div class="kpi-icon" style="background:#fef2f2">⏰</div>
+            <div><div class="kpi-val red" id="kpiOutstanding">—</div><div class="kpi-lbl">مانده وصول</div></div>
+        </div>
+        <div class="kpi-item">
+            <div class="kpi-icon" style="background:#fffbeb">⚠️</div>
+            <div><div class="kpi-val amber" id="kpiOverdue">—</div><div class="kpi-lbl">فاکتور معوق</div></div>
+        </div>
+        <div class="kpi-item">
+            <div class="kpi-icon" style="background:#f5f3ff">🏦</div>
+            <div><div class="kpi-val purple" id="kpiCheques">—</div><div class="kpi-lbl">چک سررسید ۷ روز</div></div>
+        </div>
+        <div class="kpi-item">
+            <div class="kpi-icon" style="background:#f0fdf4">📈</div>
+            <div><div class="kpi-val" id="kpiProfit" style="color:#059669">—</div><div class="kpi-lbl">سود خالص تخمینی</div></div>
+        </div>
     </div>
 
     <!-- ════════════════════════════════════════════════════
@@ -1301,6 +1507,80 @@ include __DIR__ . '/../../templates/header.php';
         </div>
     </div>
 
+    <!-- ════ تب ۹ — گزارش خرید ════ -->
+    <div class="rep-panel" id="panel-9">
+        <div id="purchLoading" class="rep-loading"><i class="fas fa-spinner"></i>در حال بارگذاری...</div>
+        <div id="purchContent" style="display:none">
+            <div class="rep-summary-cards" style="grid-template-columns:repeat(4,1fr)">
+                <div class="rep-card danger">
+                    <div class="rep-card-icon">🛒</div>
+                    <div class="rep-card-value" id="pur-total">—</div>
+                    <div class="rep-card-label">کل خرید</div>
+                </div>
+                <div class="rep-card success">
+                    <div class="rep-card-icon">✅</div>
+                    <div class="rep-card-value" id="pur-paid">—</div>
+                    <div class="rep-card-label">پرداخت‌شده</div>
+                </div>
+                <div class="rep-card warning">
+                    <div class="rep-card-icon">⏳</div>
+                    <div class="rep-card-value" id="pur-out">—</div>
+                    <div class="rep-card-label">مانده پرداخت</div>
+                </div>
+                <div class="rep-card">
+                    <div class="rep-card-icon">📋</div>
+                    <div class="rep-card-value" id="pur-count">—</div>
+                    <div class="rep-card-label">تعداد فاکتور</div>
+                </div>
+            </div>
+            <div class="rep-chart-box" style="margin-bottom:20px">
+                <div class="rep-chart-title"><i class="fas fa-shopping-cart" style="color:#ef4444"></i> روند خرید ماهانه</div>
+                <div class="chart-canvas-wrap"><canvas id="purchBarChart"></canvas></div>
+            </div>
+            <div class="rep-table-wrap">
+                <div class="rep-chart-title" style="margin-bottom:12px"><i class="fas fa-star" style="color:#f59e0b"></i> تامین‌کنندگان برتر</div>
+                <table class="rep-table">
+                    <thead><tr><th>#</th><th>نام تامین‌کننده</th><th>تعداد فاکتور</th><th>جمع خرید</th></tr></thead>
+                    <tbody id="supplierBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- ════ تب ۱۰ — جریان نقدی ════ -->
+    <div class="rep-panel" id="panel-10">
+        <div id="cfLoading" class="rep-loading"><i class="fas fa-spinner"></i>در حال بارگذاری...</div>
+        <div id="cfContent" style="display:none">
+            <div class="rep-summary-cards" style="grid-template-columns:repeat(3,1fr)">
+                <div class="rep-card success">
+                    <div class="rep-card-icon">💵</div>
+                    <div class="rep-card-value" id="cf-in">—</div>
+                    <div class="rep-card-label">جمع وصولی (ورودی)</div>
+                </div>
+                <div class="rep-card danger">
+                    <div class="rep-card-icon">💸</div>
+                    <div class="rep-card-value" id="cf-out">—</div>
+                    <div class="rep-card-label">جمع پرداختی (خروجی)</div>
+                </div>
+                <div class="rep-card primary">
+                    <div class="rep-card-icon">📊</div>
+                    <div class="rep-card-value" id="cf-net">—</div>
+                    <div class="rep-card-label" id="cf-net-lbl">خالص جریان نقدی</div>
+                </div>
+            </div>
+            <div class="rep-chart-box" style="margin-bottom:20px">
+                <div class="rep-chart-title"><i class="fas fa-water" style="color:#6366f1"></i> جریان نقدی ماهانه</div>
+                <div class="chart-canvas-wrap" style="height:300px"><canvas id="cfChart"></canvas></div>
+            </div>
+            <div class="rep-table-wrap">
+                <table class="rep-table">
+                    <thead><tr><th>ماه</th><th>ورودی</th><th>خروجی</th><th>خالص</th></tr></thead>
+                    <tbody id="cfTableBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
 </div><!-- /rep-page -->
 
 <script>
@@ -1380,6 +1660,8 @@ function switchTab(n, forceReload) {
         else if (n === 6) loadCheques();
         else if (n === 7) loadBalanceSheet(fy);
         else if (n === 8) { /* مقایسه دوره‌ای — منتظر انتخاب کاربر */ }
+        else if (n === 9) loadPurchasesReport(fy);
+        else if (n === 10) loadCashflow(fy);
     }
 }
 
@@ -2024,8 +2306,139 @@ function exportXlsx(type) {
 
 // خروجی بر اساس تب جاری — دکمه هدر صفحه
 function exportCurrentTab() {
-    const xlsxMap = {1:'sales', 2:'sales', 3:'trial_balance', 4:'trial_balance', 5:'invoice_aging', 6:'cheque_report', 7:'trial_balance', 8:'sales'};
+    const xlsxMap = {1:'sales',2:'sales',3:'trial_balance',4:'trial_balance',5:'invoice_aging',6:'cheque_report',7:'trial_balance',8:'sales',9:'sales',10:'sales'};
     exportXlsx(xlsxMap[activeTab] || 'sales');
+}
+
+// ══════════════════════════════════════════════════════════════════
+// تب ۹ — گزارش خرید
+// ══════════════════════════════════════════════════════════════════
+let purchaseChartInst = null;
+function loadPurchasesReport(fyId) {
+    document.getElementById('purchLoading').style.display = '';
+    document.getElementById('purchContent').style.display = 'none';
+    fetch('fin_reports.php?action=purchases_report&fiscal_year_id=' + fyId, {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    }).then(r => r.json()).then(res => {
+        document.getElementById('purchLoading').style.display = 'none';
+        document.getElementById('purchContent').style.display = '';
+        if (!res.ok) return;
+        const d = res.data;
+
+        document.getElementById('pur-total').textContent   = moneyFa(d.total_purchase);
+        document.getElementById('pur-paid').textContent    = moneyFa(d.total_paid);
+        document.getElementById('pur-out').textContent     = moneyFa(d.total_outstanding);
+        document.getElementById('pur-count').textContent   = numFa(d.invoice_count) + ' فاکتور';
+
+        const ctx = document.getElementById('purchBarChart').getContext('2d');
+        if (purchaseChartInst) purchaseChartInst.destroy();
+        purchaseChartInst = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: d.labels,
+                datasets: [
+                    { label: 'خرید کل', data: d.purchases, backgroundColor: 'rgba(239,68,68,.75)', borderRadius: 5 },
+                    { label: 'پرداخت‌شده', data: d.paid, backgroundColor: 'rgba(16,185,129,.75)', borderRadius: 5 }
+                ]
+            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } },
+                scales: { y: { ticks: { callback: v => numFa(v) } } } }
+        });
+
+        let tbody = '';
+        (d.top_suppliers || []).forEach((s, i) => {
+            tbody += `<tr>
+                <td>${i+1}</td>
+                <td>${s.supplier || '—'}</td>
+                <td>${numFa(s.cnt)} فاکتور</td>
+                <td style="direction:ltr;text-align:left;font-weight:600;color:#1e293b">${moneyFa(s.total)}</td>
+            </tr>`;
+        });
+        document.getElementById('supplierBody').innerHTML = tbody || '<tr><td colspan="4" style="text-align:center;color:#94a3b8;padding:24px">داده‌ای یافت نشد</td></tr>';
+    }).catch(() => {
+        document.getElementById('purchLoading').innerHTML = '<span style="color:#ef4444">خطا در بارگذاری</span>';
+    });
+}
+
+// ══════════════════════════════════════════════════════════════════
+// تب ۱۰ — جریان نقدی
+// ══════════════════════════════════════════════════════════════════
+let cashflowChartInst = null;
+function loadCashflow(fyId) {
+    document.getElementById('cfLoading').style.display = '';
+    document.getElementById('cfContent').style.display = 'none';
+    fetch('fin_reports.php?action=cashflow_report&fiscal_year_id=' + fyId, {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    }).then(r => r.json()).then(res => {
+        document.getElementById('cfLoading').style.display = 'none';
+        document.getElementById('cfContent').style.display = '';
+        if (!res.ok) return;
+        const d = res.data;
+
+        document.getElementById('cf-in').textContent    = moneyFa(d.total_in);
+        document.getElementById('cf-out').textContent   = moneyFa(d.total_out);
+        const net = d.net_total;
+        const cfNetEl = document.getElementById('cf-net');
+        cfNetEl.textContent = moneyFa(Math.abs(net));
+        cfNetEl.style.color = net >= 0 ? '#059669' : '#dc2626';
+        document.getElementById('cf-net-lbl').textContent = net >= 0 ? 'جریان مثبت ✅' : 'جریان منفی ⚠️';
+
+        const ctx = document.getElementById('cfChart').getContext('2d');
+        if (cashflowChartInst) cashflowChartInst.destroy();
+        cashflowChartInst = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: d.labels,
+                datasets: [
+                    { label: 'ورودی (وصولی)', data: d.inflow,  borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,.12)', fill: true, tension: .35, borderWidth: 2 },
+                    { label: 'خروجی (پرداختی)', data: d.outflow, borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,.08)', fill: true, tension: .35, borderWidth: 2 },
+                    { label: 'خالص جریان', data: d.net, borderColor: '#6366f1', borderDash: [5,3], fill: false, tension: .35, borderWidth: 2, pointRadius: 4 }
+                ]
+            },
+            options: { responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { position: 'top' } },
+                scales: { y: { ticks: { callback: v => numFa(v) } } }
+            }
+        });
+
+        // جدول ماهانه
+        let tbody = '';
+        (d.labels || []).forEach((m, i) => {
+            const inf = d.inflow[i]  || 0;
+            const out = d.outflow[i] || 0;
+            const net = d.net[i]     || 0;
+            tbody += `<tr>
+                <td>${m}</td>
+                <td style="direction:ltr;text-align:left;color:#059669">${moneyFa(inf)}</td>
+                <td style="direction:ltr;text-align:left;color:#ef4444">${moneyFa(out)}</td>
+                <td style="direction:ltr;text-align:left;font-weight:700;color:${net>=0?'#059669':'#dc2626'}">${moneyFa(Math.abs(net))}</td>
+            </tr>`;
+        });
+        document.getElementById('cfTableBody').innerHTML = tbody || '<tr><td colspan="4" style="text-align:center;color:#94a3b8;padding:24px">داده‌ای یافت نشد</td></tr>';
+    }).catch(() => {
+        document.getElementById('cfLoading').innerHTML = '<span style="color:#ef4444">خطا در بارگذاری</span>';
+    });
+}
+
+// ══════════════════════════════════════════════════════════════════
+// KPI Bar بالای صفحه
+// ══════════════════════════════════════════════════════════════════
+function loadKpiBar(fyId) {
+    fetch('fin_reports.php?action=kpi_summary&fiscal_year_id=' + fyId, {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    }).then(r => r.json()).then(res => {
+        if (!res.ok) return;
+        const d = res.data;
+        document.getElementById('kpiSales').textContent       = moneyFa(d.total_sales);
+        document.getElementById('kpiCollected').textContent   = moneyFa(d.total_collected);
+        document.getElementById('kpiOutstanding').textContent = moneyFa(d.total_outstanding);
+        document.getElementById('kpiOverdue').textContent     = numFa(d.overdue_invoices) + ' فاکتور';
+        document.getElementById('kpiCheques').textContent     = numFa(d.pending_cheques) + ' چک';
+        const profitEl = document.getElementById('kpiProfit');
+        profitEl.textContent = moneyFa(Math.abs(d.net_profit));
+        profitEl.style.color = d.net_profit >= 0 ? '#059669' : '#dc2626';
+        document.getElementById('kpiBar').style.opacity = '1';
+    }).catch(() => {});
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -2033,6 +2446,7 @@ function exportCurrentTab() {
 // ══════════════════════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', function () {
     switchTab(1);
+    loadKpiBar(getFyId());
 });
 </script>
 
