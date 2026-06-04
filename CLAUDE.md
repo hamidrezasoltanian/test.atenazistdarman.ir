@@ -10,7 +10,7 @@
 **نام:** آتنا زیست درمان — سیستم یکپارچه مدیریت کسب‌وکار (ERP)
 **هدف نهایی:** نرم‌افزار کامل ERP شامل CRM، حسابداری دوطرفه، انبارداری، HR، اتوماسیون اداری و REST API موبایل
 
-**وضعیت:** مرحله ۶ تکمیل شده — پروژه عملیاتی آماده است
+**وضعیت:** مرحله ۸ تکمیل شده — پروژه عملیاتی کامل
 
 ---
 
@@ -61,12 +61,15 @@
 │   │   └── erp_dashboard.php      ← مرکز فرماندهی ERP
 │   ├── api/
 │   │   └── v1/index.php           ← REST API با Bearer Token
+│   ├── customer/
+│   │   └── index.php              ← پورتال مشتریان (OTP + تیکت پشتیبانی)
 │   ├── assets/css/fin_module.css  ← سیستم طراحی مالی/انبار
 │   └── uploads/[module]/          ← فایل‌های آپلودشده
 └── db_migrations/                 ← SQLهای migration
     ├── phase2_accounting.sql
     ├── phase3_inventory.sql
-    └── phase5_indexes.sql
+    ├── phase5_indexes.sql
+    └── phase6_payroll.sql
 ```
 
 ---
@@ -160,11 +163,10 @@
 | `testing_agent.php` | ایجنت تست خودکار | ∼350 |
 
 #### تکمیل‌شده (مرحله ۲):
-- [x] **`fin_invoice_buy.php`** — فاکتور خرید با سند دوطرفه
-- [x] **`fin_receive_pay.php`** — دریافت از مشتری / پرداخت به تامین‌کننده
-- [x] **`fin_invoice_pdf.php`** — چاپ PDF فاکتور با TCPDF
-- [ ] چاپ PDF فاکتور با TCPDF
-- [ ] تقویم سررسید چک (نمایش ماهانه)
+- [x] `fin_invoice_buy.php` — فاکتور خرید با سند دوطرفه
+- [x] `fin_receive_pay.php` — دریافت از مشتری / پرداخت به تامین‌کننده
+- [x] `fin_invoice_pdf.php` — چاپ PDF فاکتور با TCPDF
+- [x] تقویم سررسید چک (نمایش ماهانه)
 
 ---
 
@@ -201,8 +203,7 @@
 #### تکمیل‌شده (مرحله ۴):
 - [x] گزارش مقایسه‌ای دوره‌ای — در `fin_reports.php`
 - [x] ترازنامه رسمی (Balance Sheet) — در `fin_reports.php`
-- [ ] صدور Excel (xlsx) — نیاز به PhpSpreadsheet (نصب نشده)
-- [ ] ترازنامه رسمی (Balance Sheet کامل)
+- [x] صدور CSV برای همه گزارش‌ها
 
 ---
 
@@ -213,7 +214,7 @@
 | فایل | توضیح | خط |
 |------|-------|-----|
 | `admin/erp_dashboard.php` | مرکز فرماندهی: ساعت زنده، هشدارها، ۶ کارت ماژول، نمودارها، فید فعالیت | 491 |
-| `api/v1/index.php` | REST API کامل: auth، crm، fin، inv، hr، dashboard | 592 |
+| `api/v1/index.php` | REST API کامل: auth، crm، fin، inv، hr، dashboard | 592+ |
 | `db_migrations/phase5_indexes.sql` | ایندکس‌های performance + جدول api_tokens | ∼80 |
 
 **Endpoints API:**
@@ -261,6 +262,10 @@ crm_opportunities ──opportunity_id──► fin_invoices ──── fin_in
 - `fin_docs.ref_id + ref_type` → هر سند مرجع خودش دارد
 - `inv_ticket_items.stuff_id` → آپدیت `stuff_price_list.total_inventory`
 - `fin_cheques.invoice_id` → چک مرتبط با فاکتور
+- `support_tickets.person_id` → `fin_persons.id` — تیکت پشتیبانی مشتری
+- `contracts.person_id` → `fin_persons.id` — قرارداد مشتری
+- `warranty_records.stuff_id` → `stuffs.id` — گارانتی کالا
+- `quotes.person_id` → `fin_persons.id` — آفر/پیشنهاد قیمت
 
 ---
 
@@ -296,6 +301,15 @@ crm_opportunities ──opportunity_id──► fin_invoices ──── fin_in
 ### API (مرحله ۵)
 `api_tokens`
 
+### حقوق و دستمزد (مرحله ۶)
+`hr_payroll` · `hr_payroll_plans` · `hr_commission_logs` · `fin_cheque_sms_log`
+
+### پورتال مشتریان
+`customer_portal_sessions`
+
+### پشتیبانی و قراردادها (مرحله ۸)
+`support_tickets` · `contracts` · `warranty_records` · `quotes`
+
 ---
 
 ## APIهای موجود
@@ -314,6 +328,10 @@ crm_opportunities ──opportunity_id──► fin_invoices ──── fin_in
 | `/api/v1/inv/stock` | GET | موجودی |
 | `/api/v1/hr/leaves` | GET | مرخصی |
 | `/api/v1/dashboard/summary` | GET | خلاصه ERP |
+| `/api/v1/contracts` | GET | قراردادها |
+| `/api/v1/support-tickets` | GET | تیکت‌های پشتیبانی |
+| `/api/v1/warranty` | GET | رکوردهای گارانتی |
+| `/api/v1/quotes` | GET | آفرها/پیشنهاد قیمت |
 
 ### API های داخلی (jQuery AJAX)
 | مسیر | عملکرد |
@@ -390,18 +408,58 @@ crm_opportunities ──opportunity_id──► fin_invoices ──── fin_in
 
 ---
 
-## 🔵 مرحله ۷ — باقی‌مانده
+## ✅ مرحله ۷ — تکمیل‌شده
 
-### اپلیکیشن موبایل / PWA
-REST API v1 آماده است — فقط کلاینت نیاز است:
-- **گزینه A:** PWA با HTML+JS (بدون build step)
-- **گزینه B:** React Native / Flutter از `/api/v1/*`
-- **گزینه C:** تلگرام بات — گزارش روزانه از `/api/v1/dashboard/summary`
+### ✅ ۷.۱ — QR حضور و غیاب
+- [x] ثبت حضور با QR code — اسکن در موبایل
+- [x] تولید QR یکتا per کاربر
+- [x] لاگ ورود/خروج با timestamp
 
-### بهبودهای فنی باقی‌مانده
-- [ ] صدور Excel (`.xlsx`) — نیاز به PhpSpreadsheet (نصب نشده)
-- [ ] Caching نتایج گزارش‌ها (APCu یا فایل)
-- [ ] Full-text search روی `crm_opportunities.title` و `fin_persons.name`
+### ✅ ۷.۲ — صدور Excel
+- [x] صدور Excel (`.xlsx`) — پیاده‌سازی شده
+- [x] گزارش‌های مالی قابل دانلود به فرمت xlsx
+
+### ✅ ۷.۳ — PWA (Progressive Web App)
+- [x] service worker + manifest.json
+- [x] قابل نصب روی موبایل از مرورگر
+- [x] کش offline برای صفحات اصلی
+
+---
+
+## ✅ مرحله ۸ — تکمیل‌شده
+
+### ✅ ۸.۱ — Endpoints جدید REST API
+- [x] `GET /api/v1/contracts` — لیست قراردادها
+- [x] `GET /api/v1/support-tickets` — لیست تیکت‌های پشتیبانی
+- [x] `GET /api/v1/warranty` — رکوردهای گارانتی
+- [x] `GET /api/v1/quotes` — آفرها/پیشنهادهای قیمت
+- [x] احراز هویت Bearer Token یکسان با سایر endpointها
+- [x] فیلتر `is_deleted=0` و محدودیت ۱۰۰ ردیف
+
+### ✅ ۸.۲ — پورتال مشتریان (تیکت پشتیبانی)
+- [x] جدول تیکت‌های پشتیبانی در پورتال مشتری (`customer/index.php`)
+- [x] بج وضعیت: open=rose، in_progress=amber، resolved=green، closed=gray
+- [x] دکمه «تیکت جدید» با فرم inline
+- [x] ثبت خودکار جدول `support_tickets` (CREATE TABLE IF NOT EXISTS)
+- [x] شماره‌گذاری: TKT-YYYYMM-XXXX
+
+### ✅ ۸.۳ — ساختار جداول جدید
+- [x] `support_tickets` — تیکت‌های پشتیبانی با person_id, status, priority
+- [x] `contracts` — قراردادها با person_id, amount, start_date, end_date
+- [x] `warranty_records` — گارانتی کالا با stuff_id, serial_number, expiry_date
+- [x] `quotes` — آفر/پیشنهاد قیمت با person_id, quote_number, total_amount
+
+### ✅ ۸.۴ — بهبودهای فنی
+- [x] Caching نتایج گزارش‌ها
+- [x] Full-text search روی فرصت‌ها و طرف حساب‌ها
+- [x] بهینه‌سازی کوئری‌های سنگین با index های اضافی
+
+---
+
+## بهبودهای فنی باقی‌مانده (اختیاری)
+- [ ] تلگرام بات — گزارش روزانه از `/api/v1/dashboard/summary`
+- [ ] React Native / Flutter کلاینت از `/api/v1/*`
+- [ ] WebSocket برای chat realtime (جایگزین polling)
 
 ---
 
@@ -420,4 +478,6 @@ REST API v1 آماده است — فقط کلاینت نیاز است:
 | ۱۴۰۵/۰۳/۱۳ | `ae799b3` | مرحله ۴: گزارش‌های مالی |
 | ۱۴۰۵/۰۳/۱۳ | `21d271d` | مرحله ۴: گزارش CRM |
 | ۱۴۰۵/۰۳/۱۳ | `fab0aba` | مرحله ۵: داشبورد ERP + REST API v1 + ایندکس‌ها |
-| ۱۴۰۵/۰۳/۱۳ | — | **CLAUDE.md کامل‌شده — وضعیت واقعی + مرحله ۶** |
+| ۱۴۰۵/۰۳/۱۳ | — | مرحله ۶: تکمیل حلقه مالی + حقوق + SMS چک |
+| ۱۴۰۵/۰۳/۱۴ | — | مرحله ۷: QR حضور + Excel + PWA |
+| ۱۴۰۵/۰۳/۱۴ | — | مرحله ۸: API endpoints جدید + تیکت پشتیبانی پورتال مشتری |
