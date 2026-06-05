@@ -339,6 +339,7 @@ return [
             ['title' => 'سال مالی',        'link' => 'admin/fiscal_years.php',       'perm' => 'settings_fiscal'],
             ['title' => 'تنظیمات تلگرام', 'link' => 'admin/telegram_settings.php',  'perm' => 'settings_general'],
             ['title' => '📥 ایجنت واردات داده', 'link' => 'admin/data_import_agent.php', 'perm' => 'admin'],
+            ['title' => '🔗 همگام‌سازی مشتریان ↔ مالی', 'link' => 'admin/sync_customers_persons.php', 'perm' => 'admin'],
         ]
     ],
     [
