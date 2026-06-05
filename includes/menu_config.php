@@ -134,9 +134,11 @@ return [
         'perm'  => 'reports_view',
         'svg'   => '<line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line>',
         'submenu' => [
-            ['title' => 'گزارش‌های مالی',  'link' => 'admin/fin_reports.php',    'perm' => 'rep_financial'],
-            ['title' => 'سال مالی',         'link' => 'admin/fiscal_years.php',   'perm' => 'settings_fiscal'],
-            ['title' => 'اعلانات SMS خودکار','link' => 'admin/sms_automation.php','perm' => 'settings_general'],
+            ['title' => 'گزارش‌های مالی',    'link' => 'admin/fin_reports.php',        'perm' => 'rep_financial'],
+            ['title' => '📋 فرم ۱۶۹ معاملات فصلی', 'link' => 'admin/fin_form169.php', 'perm' => 'rep_financial'],
+            ['title' => 'سامانه مالیاتی',    'link' => 'admin/fin_tax_integration.php','perm' => 'accounting_view'],
+            ['title' => 'سال مالی',           'link' => 'admin/fiscal_years.php',       'perm' => 'settings_fiscal'],
+            ['title' => 'اعلانات SMS خودکار', 'link' => 'admin/sms_automation.php',     'perm' => 'settings_general'],
         ]
     ],
     [
