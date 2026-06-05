@@ -307,6 +307,7 @@ require_once __DIR__ . '/../../templates/sidebar.php';
           <td style="font-size:.82rem;<?= $isOverdue?'color:#dc2626;font-weight:600':'' ?>"><?= $c['due_date'] ?: '—' ?><?= $isOverdue?' ⚠️':'' ?></td>
           <td style="white-space:nowrap;">
             <button onclick="viewCapa(<?= $c['id'] ?>)" class="fin-btn fin-btn-outline" style="padding:4px 10px;font-size:.78rem;">🔍 جزئیات</button>
+            <a href="qms_pdf.php?type=capa&id=<?= $c['id'] ?>" target="_blank" class="fin-btn" style="padding:4px 10px;font-size:.78rem;background:#fdf4ff;color:#7e22ce;border:1px solid #e9d5ff;">PDF</a>
             <?php if (isset($nextStatus[$c['status']])): ?>
             <button onclick="advanceStatus(<?= $c['id'] ?>, '<?= $c['capa_number'] ?>', '<?= $statusLabels[$c['status']] ?>')" class="fin-btn fin-btn-primary" style="padding:4px 10px;font-size:.78rem;">← <?= $nextBtnLabel[$c['status']] ?? 'پیشروی' ?></button>
             <?php endif; ?>

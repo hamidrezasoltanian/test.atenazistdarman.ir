@@ -104,6 +104,45 @@ function telegramExpiryAlert(PDO $pdo): bool {
     return telegramSend($chatId, $msg, $pdo);
 }
 
+function telegramQmsAlert(PDO $pdo): bool {
+    $st = $pdo->prepare("SELECT value FROM settings WHERE `key`=?");
+    $st->execute(['telegram_alert_id']);
+    $chatId = $st->fetchColumn();
+    if (!$chatId) return false;
+
+    $today = jdate('Y/m/d');
+    $in30  = jdate('Y/m/d', mktime(0,0,0, (int)jdate('m'), (int)jdate('d')+30, (int)jdate('Y')));
+
+    $ncOpen  = (int)$pdo->query("SELECT COUNT(*) FROM nc_records WHERE status NOT IN ('closed','cancelled') AND is_deleted=0")->fetchColumn();
+    $ncCrit  = (int)$pdo->query("SELECT COUNT(*) FROM nc_records WHERE severity='critical' AND status NOT IN ('closed','cancelled') AND is_deleted=0")->fetchColumn();
+    $ncQuar  = (int)$pdo->query("SELECT COUNT(*) FROM nc_records WHERE status='quarantined' AND is_deleted=0")->fetchColumn();
+
+    $st = $pdo->prepare("SELECT COUNT(*) FROM capa_requests WHERE status NOT IN ('closed','cancelled') AND target_date IS NOT NULL AND target_date < ? AND is_deleted=0");
+    $st->execute([$today]);
+    $capaOverdue = (int)$st->fetchColumn();
+
+    $st = $pdo->prepare("SELECT COUNT(*) FROM hr_training_records WHERE result='pass' AND expiry_date IS NOT NULL AND expiry_date <= ? AND is_deleted=0");
+    $st->execute([$in30]);
+    $trainExpire = (int)$st->fetchColumn();
+
+    $st = $pdo->prepare("SELECT COUNT(*) FROM doc_documents WHERE status='approved' AND next_review_date IS NOT NULL AND next_review_date <= ? AND is_deleted=0");
+    $st->execute([$in30]);
+    $docReview = (int)$st->fetchColumn();
+
+    if (!$ncOpen && !$capaOverdue && !$trainExpire && !$docReview) return true;
+
+    $msg  = "🏥 <b>هشدار QMS — آتنا زیست درمان</b>\n";
+    $msg .= "📅 {$today}\n──────────────\n";
+    if ($ncOpen)      $msg .= "⛔ NC باز: <b>{$ncOpen}</b>" . ($ncCrit ? " (⚠ {$ncCrit} بحرانی)" : '') . ($ncQuar ? " | قرنطینه: {$ncQuar}" : '') . "\n";
+    if ($capaOverdue) $msg .= "🔧 CAPA معوق: <b>{$capaOverdue}</b>\n";
+    if ($trainExpire) $msg .= "🎓 گواهینامه در حال انقضا (۳۰ روز): <b>{$trainExpire}</b>\n";
+    if ($docReview)   $msg .= "📄 مدارک نیاز به بازنگری: <b>{$docReview}</b>\n";
+    $msg .= "──────────────\n";
+    $msg .= "🔗 " . (defined('SITE_URL') ? SITE_URL . "/admin/erp_dashboard.php" : "");
+
+    return telegramSend($chatId, $msg, $pdo);
+}
+
 function telegramCheckAlert(PDO $pdo, int $chequeId): bool {
     $st = $pdo->prepare("SELECT value FROM settings WHERE `key`=?");
     $st->execute(['telegram_alert_id']);

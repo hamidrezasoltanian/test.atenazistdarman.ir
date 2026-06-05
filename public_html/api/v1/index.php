@@ -723,5 +723,67 @@ if ($resource === 'quotes') {
     apiError('endpoint یافت نشد', 404);
 }
 
+// ── QMS ────────────────────────────────────────────────────
+if ($resource === 'qms') {
+    if ($method === 'GET' && $action === 'nc') {
+        $stmt = $pdo->prepare(
+            "SELECT id, nc_number, title, severity, source, disposition, status,
+                    detected_date, created_at
+             FROM nc_records WHERE is_deleted=0
+             ORDER BY id DESC LIMIT 100"
+        );
+        $stmt->execute();
+        apiResponse(['ok' => true, 'data' => $stmt->fetchAll()]);
+    }
+    if ($method === 'GET' && $action === 'capa') {
+        $stmt = $pdo->prepare(
+            "SELECT cr.id, cr.capa_number, cr.title, cr.type, cr.status,
+                    cr.root_cause_method, cr.target_date, cr.closed_date,
+                    u.name AS responsible_name, cr.created_at
+             FROM capa_requests cr LEFT JOIN users u ON u.id=cr.responsible_id
+             WHERE cr.is_deleted=0
+             ORDER BY cr.id DESC LIMIT 100"
+        );
+        $stmt->execute();
+        apiResponse(['ok' => true, 'data' => $stmt->fetchAll()]);
+    }
+    if ($method === 'GET' && $action === 'audits') {
+        $stmt = $pdo->prepare(
+            "SELECT ap.id, ap.audit_number, ap.title, ap.audit_type, ap.status,
+                    ap.planned_date, ap.scope, ap.criteria,
+                    u.name AS lead_auditor_name,
+                    COUNT(af.id) AS finding_count
+             FROM qms_audit_plans ap
+             LEFT JOIN users u ON u.id=ap.lead_auditor_id
+             LEFT JOIN qms_audit_findings af ON af.audit_id=ap.id AND af.is_deleted=0
+             WHERE ap.is_deleted=0
+             GROUP BY ap.id
+             ORDER BY ap.id DESC LIMIT 100"
+        );
+        $stmt->execute();
+        apiResponse(['ok' => true, 'data' => $stmt->fetchAll()]);
+    }
+    if ($method === 'GET' && $action === 'summary') {
+        $today = date('Y/m/d');
+        $in30  = date('Y/m/d', strtotime('+30 days'));
+        try {
+            $data = [
+                'nc_open'         => (int)$pdo->query("SELECT COUNT(*) FROM nc_records WHERE status NOT IN ('closed','cancelled') AND is_deleted=0")->fetchColumn(),
+                'nc_critical'     => (int)$pdo->query("SELECT COUNT(*) FROM nc_records WHERE severity='critical' AND status NOT IN ('closed','cancelled') AND is_deleted=0")->fetchColumn(),
+                'nc_quarantine'   => (int)$pdo->query("SELECT COUNT(*) FROM nc_records WHERE status='quarantined' AND is_deleted=0")->fetchColumn(),
+                'capa_open'       => (int)$pdo->query("SELECT COUNT(*) FROM capa_requests WHERE status NOT IN ('closed','cancelled') AND is_deleted=0")->fetchColumn(),
+                'capa_overdue'    => (int)$pdo->prepare("SELECT COUNT(*) FROM capa_requests WHERE status NOT IN ('closed','cancelled') AND target_date < ? AND is_deleted=0")->execute([$today]) ? $pdo->query("SELECT COUNT(*) FROM capa_requests WHERE status NOT IN ('closed','cancelled') AND target_date IS NOT NULL AND target_date < '$today' AND is_deleted=0")->fetchColumn() : 0,
+                'doc_review_due'  => (int)$pdo->prepare("SELECT COUNT(*) FROM doc_documents WHERE status='approved' AND next_review_date IS NOT NULL AND next_review_date <= ? AND is_deleted=0")->execute([$in30]) ? $pdo->query("SELECT COUNT(*) FROM doc_documents WHERE status='approved' AND next_review_date IS NOT NULL AND next_review_date <= '$in30' AND is_deleted=0")->fetchColumn() : 0,
+                'training_expire' => (int)$pdo->prepare("SELECT COUNT(*) FROM hr_training_records WHERE result='pass' AND expiry_date IS NOT NULL AND expiry_date <= ? AND is_deleted=0")->execute([$in30]) ? $pdo->query("SELECT COUNT(*) FROM hr_training_records WHERE result='pass' AND expiry_date IS NOT NULL AND expiry_date <= '$in30' AND is_deleted=0")->fetchColumn() : 0,
+                'audit_planned'   => (int)$pdo->query("SELECT COUNT(*) FROM qms_audit_plans WHERE status='planned' AND is_deleted=0")->fetchColumn(),
+            ];
+        } catch (Exception $e) {
+            $data = ['nc_open'=>0,'nc_critical'=>0,'nc_quarantine'=>0,'capa_open'=>0,'capa_overdue'=>0,'doc_review_due'=>0,'training_expire'=>0,'audit_planned'=>0];
+        }
+        apiResponse(['ok' => true, 'data' => $data]);
+    }
+    apiError('endpoint یافت نشد', 404);
+}
+
 // ── fallback ───────────────────────────────────────────────
 apiError("endpoint '$resource/$action' یافت نشد", 404);

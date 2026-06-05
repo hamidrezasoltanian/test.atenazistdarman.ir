@@ -351,6 +351,7 @@ require_once __DIR__ . '/../../templates/sidebar.php';
           <td style="font-size:.8rem;"><?= $r['detection_date'] ?: jdate('Y/m/d', strtotime($r['created_at'])) ?></td>
           <td style="white-space:nowrap;">
             <button onclick="viewNC(<?= $r['id'] ?>)" class="fin-btn fin-btn-outline" style="padding:4px 10px;font-size:.78rem;">🔍</button>
+            <a href="qms_pdf.php?type=nc&id=<?= $r['id'] ?>" target="_blank" class="fin-btn" style="padding:4px 10px;font-size:.78rem;background:#fdf4ff;color:#7e22ce;border:1px solid #e9d5ff;">PDF</a>
             <?php if (!in_array($r['status'],['closed','cancelled'],true)): ?>
             <button onclick="openDisposition(<?= $r['id'] ?>, '<?= $r['nc_number'] ?>')" class="fin-btn fin-btn-primary" style="padding:4px 10px;font-size:.78rem;">⚖ تعیین تکلیف</button>
             <?php endif; ?>

@@ -66,6 +66,22 @@ if (!empty($_SERVER['HTTP_X_REQUESTED_WITH'])) {
             ];
         } catch (Exception $e) { $out['hr'] = ['pending_leaves'=>0,'pending_missions'=>0,'active_users'=>0]; }
 
+        // QMS
+        try {
+            $today = date('Y/m/d');
+            $in30  = date('Y/m/d', strtotime('+30 days'));
+            $out['qms'] = [
+                'nc_open'         => (int)$pdo->query("SELECT COUNT(*) FROM nc_records WHERE status NOT IN ('closed','cancelled') AND is_deleted=0")->fetchColumn(),
+                'nc_critical'     => (int)$pdo->query("SELECT COUNT(*) FROM nc_records WHERE severity='critical' AND status NOT IN ('closed','cancelled') AND is_deleted=0")->fetchColumn(),
+                'nc_quarantine'   => (int)$pdo->query("SELECT COUNT(*) FROM nc_records WHERE status='quarantined' AND is_deleted=0")->fetchColumn(),
+                'capa_open'       => (int)$pdo->query("SELECT COUNT(*) FROM capa_requests WHERE status NOT IN ('closed','cancelled') AND is_deleted=0")->fetchColumn(),
+                'capa_overdue'    => (int)$pdo->prepare("SELECT COUNT(*) FROM capa_requests WHERE status NOT IN ('closed','cancelled') AND target_date IS NOT NULL AND target_date < ? AND is_deleted=0")->execute([$today]) ? $pdo->query("SELECT COUNT(*) FROM capa_requests WHERE status NOT IN ('closed','cancelled') AND target_date IS NOT NULL AND target_date < '$today' AND is_deleted=0")->fetchColumn() : 0,
+                'doc_review_due'  => (int)$pdo->prepare("SELECT COUNT(*) FROM doc_documents WHERE status='approved' AND next_review_date IS NOT NULL AND next_review_date <= ? AND is_deleted=0")->execute([$in30]) ? $pdo->query("SELECT COUNT(*) FROM doc_documents WHERE status='approved' AND next_review_date IS NOT NULL AND next_review_date <= '$in30' AND is_deleted=0")->fetchColumn() : 0,
+                'training_expire' => (int)$pdo->prepare("SELECT COUNT(*) FROM hr_training_records WHERE result='pass' AND expiry_date IS NOT NULL AND expiry_date <= ? AND is_deleted=0")->execute([$in30]) ? $pdo->query("SELECT COUNT(*) FROM hr_training_records WHERE result='pass' AND expiry_date IS NOT NULL AND expiry_date <= '$in30' AND is_deleted=0")->fetchColumn() : 0,
+                'audit_planned'   => (int)$pdo->query("SELECT COUNT(*) FROM qms_audit_plans WHERE status='planned' AND is_deleted=0")->fetchColumn(),
+            ];
+        } catch (Exception $e) { $out['qms'] = ['nc_open'=>0,'nc_critical'=>0,'nc_quarantine'=>0,'capa_open'=>0,'capa_overdue'=>0,'doc_review_due'=>0,'training_expire'=>0,'audit_planned'=>0]; }
+
         // فعالیت‌های اخیر
         try {
             $out['activities'] = $pdo->query(
@@ -118,6 +134,25 @@ if (!empty($_SERVER['HTTP_X_REQUESTED_WITH'])) {
                  ORDER BY spl.total_inventory ASC LIMIT 5"
             )->fetchAll(PDO::FETCH_ASSOC);
         } catch (Exception $e) { $data['low_stock'] = []; }
+        try {
+            $today = date('Y/m/d');
+            $st = $pdo->prepare(
+                "SELECT cr.capa_number, cr.title, cr.target_date, cr.type
+                 FROM capa_requests cr
+                 WHERE cr.is_deleted=0 AND cr.status NOT IN ('closed','cancelled')
+                   AND cr.target_date IS NOT NULL AND cr.target_date < ?
+                 ORDER BY cr.target_date ASC LIMIT 5"
+            );
+            $st->execute([$today]);
+            $data['qms_capa_overdue'] = $st->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Exception $e) { $data['qms_capa_overdue'] = []; }
+        try {
+            $data['qms_nc_quarantine'] = $pdo->query(
+                "SELECT nc_number, title, severity FROM nc_records
+                 WHERE status='quarantined' AND is_deleted=0
+                 ORDER BY id DESC LIMIT 5"
+            )->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Exception $e) { $data['qms_nc_quarantine'] = []; }
         echo json_encode($data, JSON_UNESCAPED_UNICODE);
         exit;
     }
@@ -269,6 +304,47 @@ require_once $root . '/templates/sidebar.php';
       <div id="crmWon" style="font-size:.7rem;margin-top:2px;color:#94a3b8;"></div>
     </div>
     <a href="<?= $basePath ?>admin/crm_kanban.php" class="kpi-mini-arrow">←</a>
+  </div>
+
+</div>
+
+<!-- ── QMS KPIs ─────────────────────────────────────────── -->
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px;">
+
+  <div class="kpi-mini" style="--km:#ef4444;">
+    <div class="kpi-mini-ico" style="background:#fef2f2;color:#ef4444;">⛔</div>
+    <div class="kpi-mini-body">
+      <div class="kpi-mini-val" id="qmsNcOpen">—</div>
+      <div class="kpi-mini-lbl">NC باز <span id="qmsNcCrit"></span></div>
+    </div>
+    <a href="<?= $basePath ?>admin/nc_records.php" class="kpi-mini-arrow">←</a>
+  </div>
+
+  <div class="kpi-mini" style="--km:#f97316;">
+    <div class="kpi-mini-ico" style="background:#fff7ed;color:#f97316;">🔧</div>
+    <div class="kpi-mini-body">
+      <div class="kpi-mini-val" id="qmsCapaOpen">—</div>
+      <div class="kpi-mini-lbl">CAPA باز <span id="qmsCapaOver"></span></div>
+    </div>
+    <a href="<?= $basePath ?>admin/capa.php" class="kpi-mini-arrow">←</a>
+  </div>
+
+  <div class="kpi-mini" style="--km:#8b5cf6;">
+    <div class="kpi-mini-ico" style="background:#f5f3ff;color:#8b5cf6;">📄</div>
+    <div class="kpi-mini-body">
+      <div class="kpi-mini-val" id="qmsDocDue">—</div>
+      <div class="kpi-mini-lbl">مدرک نیاز به بازنگری</div>
+    </div>
+    <a href="<?= $basePath ?>admin/doc_control.php" class="kpi-mini-arrow">←</a>
+  </div>
+
+  <div class="kpi-mini" style="--km:#0ea5e9;">
+    <div class="kpi-mini-ico" style="background:#f0f9ff;color:#0ea5e9;">🎓</div>
+    <div class="kpi-mini-body">
+      <div class="kpi-mini-val" id="qmsTrainExp">—</div>
+      <div class="kpi-mini-lbl">گواهینامه در حال انقضا</div>
+    </div>
+    <a href="<?= $basePath ?>admin/hr_training.php" class="kpi-mini-arrow">←</a>
   </div>
 
 </div>
@@ -471,7 +547,7 @@ function trendBadge(p) {
 
 function loadSummary() {
   $.getJSON(location.pathname + '?action=summary', function(d) {
-    const f = d.fin || {}, c = d.crm || {}, i = d.inv || {}, h = d.hr || {};
+    const f = d.fin || {}, c = d.crm || {}, i = d.inv || {}, h = d.hr || {}, q = d.qms || {};
 
     // KPI اصلی
     $('#kpiRevThis').text(fm(f.rev_this, true));
@@ -497,6 +573,14 @@ function loadSummary() {
     $('#crmOpps').text((c.opps||0).toLocaleString('fa-IR'));
     $('#crmWon').text('بسته شده: ' + (c.won||0));
 
+    // QMS KPIs
+    $('#qmsNcOpen').text((q.nc_open||0).toLocaleString('fa-IR'));
+    $('#qmsNcCrit').html(q.nc_critical > 0 ? `<span style="color:#ef4444;font-weight:700;">(${q.nc_critical} بحرانی)</span>` : '');
+    $('#qmsCapaOpen').text((q.capa_open||0).toLocaleString('fa-IR'));
+    $('#qmsCapaOver').html(q.capa_overdue > 0 ? `<span style="color:#ef4444;font-weight:700;">(${q.capa_overdue} معوق)</span>` : '');
+    $('#qmsDocDue').text((q.doc_review_due||0).toLocaleString('fa-IR'));
+    $('#qmsTrainExp').text((q.training_expire||0).toLocaleString('fa-IR'));
+
     // نوار هشدار
     const chips = [];
     if (f.due_week > 0)
@@ -508,6 +592,10 @@ function loadSummary() {
     const hrPend = (h.pending_leaves||0) + (h.pending_missions||0);
     if (hrPend > 0)
       chips.push(`<span class="ach" style="background:rgba(6,182,212,.18);color:#67e8f9;">🏖 ${hrPend} درخواست HR</span>`);
+    if ((q.capa_overdue||0) > 0)
+      chips.push(`<span class="ach" style="background:rgba(249,115,22,.18);color:#fdba74;">🔧 ${q.capa_overdue} CAPA معوق</span>`);
+    if ((q.nc_open||0) > 0)
+      chips.push(`<span class="ach" style="background:rgba(239,68,68,.18);color:#fca5a5;">⛔ ${q.nc_open} NC باز</span>`);
     $('#alertChips').html(chips.length ? chips.join('') : '<span style="opacity:.45;font-size:.78rem;">همه چیز عادی است ✓</span>');
 
     // فعالیت‌ها
@@ -601,6 +689,28 @@ function loadAlerts() {
           <div style="background:#f1f5f9;border-radius:4px;height:5px;">
             <div style="background:${barClr};width:${pct}%;height:5px;border-radius:4px;transition:width .4s;"></div>
           </div>
+        </div>`;
+      });
+    }
+
+    const capas = d.qms_capa_overdue || [];
+    if (capas.length) {
+      html += `<div style="font-size:.73rem;font-weight:700;color:#f97316;text-transform:uppercase;letter-spacing:.5px;margin:${chqs.length||low.length?'14px':0} 0 8px;">🔧 CAPA‌های معوق</div>`;
+      capas.forEach(ca => {
+        html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #f8fafc;">
+          <span style="color:#334155;font-size:.79rem;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:60%;">${ca.capa_number} — ${ca.title||''}</span>
+          <span style="color:#ef4444;font-size:.73rem;font-weight:600;">سررسید: ${ca.target_date||''}</span>
+        </div>`;
+      });
+    }
+    const ncs = d.qms_nc_quarantine || [];
+    if (ncs.length) {
+      html += `<div style="font-size:.73rem;font-weight:700;color:#ef4444;text-transform:uppercase;letter-spacing:.5px;margin:${chqs.length||low.length||capas.length?'14px':0} 0 8px;">⛔ محصولات در قرنطینه</div>`;
+      const sevL = {critical:'بحرانی', major:'اصلی', minor:'جزئی'};
+      ncs.forEach(nc => {
+        html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #f8fafc;">
+          <span style="color:#334155;font-size:.79rem;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:65%;">${nc.nc_number} — ${nc.title||''}</span>
+          <span style="background:#fef2f2;color:#ef4444;padding:2px 7px;border-radius:10px;font-size:.69rem;font-weight:700;">${sevL[nc.severity]||nc.severity}</span>
         </div>`;
       });
     }

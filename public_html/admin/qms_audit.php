@@ -375,6 +375,7 @@ textarea.fin-input{resize:vertical}
   <div style="display:flex;gap:8px;flex-wrap:wrap">
     <button class="fin-btn fin-btn-xs fin-btn-secondary" onclick='editAudit(<?= json_encode($aud) ?>)'>ویرایش</button>
     <button class="fin-btn fin-btn-xs" style="background:#dcfce7;color:#15803d" onclick="showFindings(<?= $aud['id'] ?>, '<?= htmlspecialchars(addslashes($aud['title'])) ?>')">📋 یافته‌ها</button>
+    <a href="qms_pdf.php?type=audit&id=<?= $aud['id'] ?>" target="_blank" class="fin-btn fin-btn-xs" style="background:#fdf4ff;color:#7e22ce;border:1px solid #e9d5ff">PDF گزارش</a>
     <?php if ($aud['status'] === 'planned'): ?>
     <button class="fin-btn fin-btn-xs" style="background:#fef9c3;color:#854d0e" onclick="changeAuditStatus(<?= $aud['id'] ?>, 'in_progress')">▶ شروع ممیزی</button>
     <?php elseif ($aud['status'] === 'in_progress'): ?>
