@@ -82,7 +82,9 @@ if ($isAjax) {
                     i.unit_price,
                     i.total,
                     i.unit,
-                    i.description AS item_desc
+                    i.description AS item_desc,
+                    i.batch_number,
+                    i.expiry_date
                 FROM inv_ticket_items i
                 JOIN inv_tickets t ON t.id = i.ticket_id
                 JOIN inv_storerooms s ON s.id = t.storeroom_id
@@ -515,6 +517,8 @@ include __DIR__ . '/../../templates/header.php';
                             <th>نوع</th>
                             <th>انبار</th>
                             <th>طرف حساب</th>
+                            <th>Lot/Batch</th>
+                            <th>انقضا</th>
                             <th>ورودی</th>
                             <th>خروجی</th>
                             <th>موجودی تجمعی</th>
@@ -523,11 +527,11 @@ include __DIR__ . '/../../templates/header.php';
                         </tr>
                     </thead>
                     <tbody id="kardexBody">
-                        <tr><td colspan="11" class="kardex-empty"><div class="empty-icon">📊</div><p>در حال بارگذاری...</p></td></tr>
+                        <tr><td colspan="13" class="kardex-empty"><div class="empty-icon">📊</div><p>در حال بارگذاری...</p></td></tr>
                     </tbody>
                     <tfoot id="kardexFoot" style="display:none;">
                         <tr>
-                            <td colspan="6" style="text-align:left;">جمع</td>
+                            <td colspan="8" style="text-align:left;">جمع</td>
                             <td class="in-qty" id="footTotalIn">۰</td>
                             <td class="out-qty" id="footTotalOut">۰</td>
                             <td class="balance-col" id="footBalance">۰</td>
@@ -616,6 +620,7 @@ include __DIR__ . '/../../templates/header.php';
 /* ══════════════════════════════════════════════════════════════
    متغیرهای سراسری
 ══════════════════════════════════════════════════════════════ */
+const TODAY_JALALI    = '<?= $todayJalali ?>';
 let selectedStuffId   = <?= $initStuffId ?: 0 ?>;
 let selectedStuffData = null;
 let searchDebTimer    = null;
@@ -698,7 +703,7 @@ function loadKardex() {
     const dateTo   = document.getElementById('fDateTo')   ? document.getElementById('fDateTo').value.trim()   : '';
 
     const tbody = document.getElementById('kardexBody');
-    tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:24px;color:#9ca3af;">در حال بارگذاری...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;padding:24px;color:#9ca3af;">در حال بارگذاری...</td></tr>';
     document.getElementById('kardexFoot').style.display  = 'none';
     document.getElementById('summaryRow').style.display  = 'none';
     // بستن پنل FIFO هنگام بارگذاری مجدد کاردکس
@@ -713,7 +718,7 @@ function loadKardex() {
         .then(r => r.json())
         .then(res => {
             if (res.status !== 'ok') {
-                tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;color:#dc2626;padding:24px;">${esc(res.message)}</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="13" style="text-align:center;color:#dc2626;padding:24px;">${esc(res.message)}</td></tr>`;
                 return;
             }
 
@@ -729,7 +734,7 @@ function loadKardex() {
             const movements = res.movements || [];
 
             if (movements.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="11"><div class="kardex-empty"><div class="empty-icon">📭</div><p>در این بازه زمانی هیچ حرکتی ثبت نشده است</p></div></td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="13"><div class="kardex-empty"><div class="empty-icon">📭</div><p>در این بازه زمانی هیچ حرکتی ثبت نشده است</p></div></td></tr>`;
                 return;
             }
 
@@ -747,6 +752,8 @@ function loadKardex() {
                     <td><span class="badge-${m.type}">${typeLabels[m.type]||m.type}</span></td>
                     <td style="white-space:nowrap;">${esc(m.storeroom_name||'—')}</td>
                     <td>${esc(m.person_name||'—')}</td>
+                    <td style="font-size:.8rem;">${m.batch_number ? `<code style="background:#f0fdf4;padding:1px 5px;border-radius:4px;">${esc(m.batch_number)}</code>` : '—'}</td>
+                    <td style="font-size:.8rem;">${m.expiry_date ? `<span style="color:${m.expiry_date < TODAY_JALALI ? '#ef4444' : '#f59e0b'};font-weight:${m.expiry_date < TODAY_JALALI ? '700':'500'}">${esc(m.expiry_date)}</span>` : '—'}</td>
                     <td class="${inQty>0?'in-qty':''}" style="text-align:left;">${inQty>0?fmtNum(inQty):'—'}</td>
                     <td class="${outQty>0?'out-qty':''}" style="text-align:left;">${outQty>0?fmtNum(outQty):'—'}</td>
                     <td class="balance-col" style="text-align:left;">${fmtNum(bal)}</td>
@@ -774,7 +781,7 @@ function loadKardex() {
             document.getElementById('fifoBtnWrap').style.display = 'block';
         })
         .catch(() => {
-            tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:#dc2626;padding:24px;">خطا در بارگذاری داده‌ها</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;color:#dc2626;padding:24px;">خطا در بارگذاری داده‌ها</td></tr>';
         });
 }
 

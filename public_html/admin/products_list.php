@@ -58,6 +58,28 @@ if ($isAjax && isset($_POST['action']) && $_POST['action'] === 'save_price') {
     exit;
 }
 
+// --- ذخیره اطلاعات تخصصی کالا (AJAX) ---
+if ($isAjax && isset($_POST['action']) && $_POST['action'] === 'save_stuff_info') {
+    if (ob_get_length()) ob_clean();
+    header('Content-Type: application/json');
+    require_once __DIR__ . '/../../includes/auth.php';
+    if (!isset($_SESSION['user_id'])) { echo json_encode(['status'=>'error','message'=>'نشست منقضی']); exit; }
+    if (!csrf_verify($_POST['csrf_token'] ?? '')) { echo json_encode(['status'=>'error','message'=>'خطای امنیتی']); exit; }
+    $stuffId = (int)($_POST['stuff_id'] ?? 0);
+    if (!$stuffId) { echo json_encode(['status'=>'error','message'=>'کالا نامعتبر']); exit; }
+    $ircCode        = trim($_POST['irc_code'] ?? '');
+    $productType    = $_POST['product_type'] ?? 'other';
+    $shelfLifeMonths = (int)($_POST['shelf_life_months'] ?? 0);
+    $allowedTypes = ['medical_device','pharmaceutical','consumable','other'];
+    if (!in_array($productType, $allowedTypes, true)) $productType = 'other';
+    try {
+        $pdo->prepare("UPDATE stuffs SET irc_code=?, product_type=?, shelf_life_months=? WHERE id=?")
+            ->execute([$ircCode, $productType, $shelfLifeMonths ?: null, $stuffId]);
+        echo json_encode(['status'=>'success','message'=>'اطلاعات تخصصی ذخیره شد']);
+    } catch (Throwable $e) { echo json_encode(['status'=>'error','message'=>'خطای دیتابیس']); }
+    exit;
+}
+
 // --- دریافت جزئیات کالا (AJAX) ---
 if ($isAjax && isset($_POST['action']) && $_POST['action'] === 'get_details') {
     if (ob_get_length()) ob_clean();
@@ -204,7 +226,9 @@ $totalRows = $countStmt->fetchColumn();
 $totalPages = ceil($totalRows / $limit);
 
 $sql = "
-    SELECT s.*, p.price, p.price_imed, p.price_faradis, p.price_dermazon, 
+    SELECT s.*, p.price, p.price_imed, p.price_faradis, p.price_dermazon,
+           p.price_sell, p.price_buy, p.price_sell_imed, p.price_sell_faradis,
+           p.price_sell_dermazon, p.minimum_stock,
            p.total_inventory, p.central_store, p.virtual_store, p.scrap_store
     FROM stuffs s
     LEFT JOIN stuff_price_list p ON s.stuff_code = p.stuff_code
@@ -666,7 +690,12 @@ include __DIR__ . '/../../templates/sidebar.php';
                                     <?php echo htmlspecialchars($p['stuff_name'] ?? ''); ?>
                                 </a>
                             </td>
-                            <td><?php echo htmlspecialchars($p['technical_code'] ?? '-'); ?></td>
+                            <td>
+                                <?php echo htmlspecialchars($p['technical_code'] ?? '-'); ?>
+                                <?php if (!empty($p['irc_code'])): ?>
+                                    <br><span style="font-size:.72rem;background:#e0f2fe;color:#0369a1;padding:2px 6px;border-radius:4px;direction:ltr;">IRC: <?= htmlspecialchars($p['irc_code']) ?></span>
+                                <?php endif; ?>
+                            </td>
                             <td>
                                 <span class="status-badge <?php echo $p['active'] ? 'status-active' : 'status-inactive'; ?>">
                                     <?php echo $p['active'] ? 'فعال' : 'غیرفعال'; ?>
@@ -760,6 +789,10 @@ include __DIR__ . '/../../templates/sidebar.php';
                 p.tags.map(t => `<span style="background:${t.color || '#e2e8f0'};padding:4px 12px;border-radius:20px;font-size:0.75rem;">${escapeHtml(t.title)}</span>`).join('') + 
                 `</div></div>`;
         }
+        const productTypeLabel = {'medical_device':'تجهیزات پزشکی','pharmaceutical':'دارو','consumable':'مصرفی','other':'سایر'};
+        const ircCodeVal = p.irc_code || '';
+        const ptVal = p.product_type || 'other';
+        const slmVal = p.shelf_life_months || '';
         detailsDiv.innerHTML = `
             <div class="details-card">
                 <h4>📄 اطلاعات پایه</h4>
@@ -770,6 +803,32 @@ include __DIR__ . '/../../templates/sidebar.php';
                 <div class="details-row"><span class="details-label">دسته‌بندی:</span><span class="details-value">${escapeHtml(p.category || '-')}</span></div>
                 <div class="details-row"><span class="details-label">وضعیت:</span><span class="details-value"><span class="status-badge ${p.active ? 'status-active' : 'status-inactive'}">${p.active ? 'فعال' : 'غیرفعال'}</span></span></div>
                 <div class="details-row"><span class="details-label">تاریخ ثبت:</span><span class="details-value">${p.save_date ? new Date(p.save_date).toLocaleDateString('fa-IR') : '-'}</span></div>
+            </div>
+            <div class="details-card">
+                <h4>🏥 اطلاعات تخصصی (دارو/تجهیزات)</h4>
+                <form id="stuffInfoForm" onsubmit="saveStuffInfo(event,${p.id})">
+                <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+                    <div style="grid-column:1/-1">
+                        <label style="font-size:.78rem;color:#64748b;display:block;margin-bottom:3px">کد IRC (اداره کل تجهیزات و ملزومات)</label>
+                        <input name="irc_code" class="price-inp" value="${escapeHtml(ircCodeVal)}" placeholder="مثلاً: IRC-1234-5678" style="direction:ltr">
+                    </div>
+                    <div>
+                        <label style="font-size:.78rem;color:#64748b;display:block;margin-bottom:3px">نوع محصول</label>
+                        <select name="product_type" class="price-inp">
+                            <option value="medical_device" ${ptVal==='medical_device'?'selected':''}>تجهیزات پزشکی</option>
+                            <option value="pharmaceutical" ${ptVal==='pharmaceutical'?'selected':''}>دارو</option>
+                            <option value="consumable"     ${ptVal==='consumable'?'selected':''}>مصرفی</option>
+                            <option value="other"          ${ptVal==='other'?'selected':''}>سایر</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size:.78rem;color:#64748b;display:block;margin-bottom:3px">عمر مفید (ماه)</label>
+                        <input name="shelf_life_months" type="number" min="0" class="price-inp" value="${escapeHtml(String(slmVal))}" placeholder="مثلاً ۲۴">
+                    </div>
+                </div>
+                <button type="submit" style="width:100%;padding:9px;background:#0891b2;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:.9rem;font-family:inherit">💾 ذخیره اطلاعات تخصصی</button>
+                </form>
             </div>
             <div class="details-card">
                 <h4>💰 قیمت‌گذاری</h4>
@@ -839,6 +898,33 @@ include __DIR__ . '/../../templates/sidebar.php';
                 btn.textContent = '❌ خطا: ' + (d.message || '');
                 btn.style.background = '#dc2626';
                 setTimeout(() => { btn.textContent = '💾 ذخیره قیمت‌ها'; btn.style.background = '#2563eb'; }, 3000);
+            }
+        })
+        .catch(() => { btn.disabled = false; btn.textContent = '❌ خطای شبکه'; });
+    }
+
+    function saveStuffInfo(e, stuffId) {
+        e.preventDefault();
+        const form = document.getElementById('stuffInfoForm');
+        const fd = new FormData(form);
+        fd.append('action', 'save_stuff_info');
+        fd.append('stuff_id', stuffId);
+        const btn = form.querySelector('button[type=submit]');
+        btn.disabled = true; btn.textContent = '⏳ در حال ذخیره...';
+        fetch(window.location.href, {
+            method: 'POST',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            body: fd
+        })
+        .then(r => r.json())
+        .then(d => {
+            btn.disabled = false;
+            if (d.status === 'success') {
+                btn.textContent = '✅ ذخیره شد'; btn.style.background = '#16a34a';
+                setTimeout(() => { btn.textContent = '💾 ذخیره اطلاعات تخصصی'; btn.style.background = '#0891b2'; }, 2000);
+            } else {
+                btn.textContent = '❌ ' + (d.message || 'خطا'); btn.style.background = '#dc2626';
+                setTimeout(() => { btn.textContent = '💾 ذخیره اطلاعات تخصصی'; btn.style.background = '#0891b2'; }, 3000);
             }
         })
         .catch(() => { btn.disabled = false; btn.textContent = '❌ خطای شبکه'; });

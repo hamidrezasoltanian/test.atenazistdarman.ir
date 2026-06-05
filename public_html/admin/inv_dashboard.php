@@ -95,6 +95,38 @@ try {
     $totalInventory = (int)$stmt->fetchColumn();
 } catch (Throwable $e) {}
 
+// کالاهای نزدیک انقضا یا منقضی (از جدول inv_batch_stock)
+$expiryAlerts  = [];
+$expiredItems  = [];
+$todayJalali   = jdate('Y/m/d');
+$plus30Jalali  = jdate('Y/m/d', mktime(0,0,0,(int)jdate('m'),(int)jdate('d')+30,(int)jdate('Y')));
+try {
+    $stmt = $pdo->prepare("
+        SELECT s.stuff_name, b.batch_number, b.expiry_date, SUM(b.qty) AS qty
+        FROM inv_batch_stock b
+        JOIN stuffs s ON s.id = b.stuff_id
+        WHERE b.qty > 0 AND b.expiry_date IS NOT NULL
+          AND b.expiry_date < ? AND b.is_deleted = 0
+        GROUP BY b.stuff_id, b.batch_number, b.expiry_date
+        ORDER BY b.expiry_date ASC LIMIT 10
+    ");
+    $stmt->execute([$todayJalali]);
+    $expiredItems = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Throwable $e) {}
+try {
+    $stmt = $pdo->prepare("
+        SELECT s.stuff_name, b.batch_number, b.expiry_date, SUM(b.qty) AS qty
+        FROM inv_batch_stock b
+        JOIN stuffs s ON s.id = b.stuff_id
+        WHERE b.qty > 0 AND b.expiry_date IS NOT NULL
+          AND b.expiry_date >= ? AND b.expiry_date <= ? AND b.is_deleted = 0
+        GROUP BY b.stuff_id, b.batch_number, b.expiry_date
+        ORDER BY b.expiry_date ASC LIMIT 15
+    ");
+    $stmt->execute([$todayJalali, $plus30Jalali]);
+    $expiryAlerts = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Throwable $e) {}
+
 // کالاهای با موجودی کم (بین ۱ تا ۵)
 $lowStockItems = [];
 try {
@@ -372,6 +404,49 @@ include __DIR__ . '/../../templates/header.php';
           </div>
         <?php endif; ?>
       </div>
+
+      <!-- هشدار انقضا و نزدیک به انقضا -->
+      <?php if (!empty($expiredItems) || !empty($expiryAlerts)): ?>
+      <div class="fin-panel" style="border-right:4px solid #ef4444;">
+        <div class="fin-panel-title">🚨 هشدار تاریخ انقضا</div>
+        <?php if (!empty($expiredItems)): ?>
+          <div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:10px 14px;margin-bottom:12px;">
+            <div style="font-weight:700;color:#dc2626;margin-bottom:8px;">🔴 منقضی‌شده (موجود در انبار)</div>
+            <table class="fin-table" style="font-size:.82rem;">
+              <thead><tr><th>کالا</th><th>Lot/Batch</th><th>تاریخ انقضا</th><th>موجودی</th></tr></thead>
+              <tbody>
+                <?php foreach ($expiredItems as $ei): ?>
+                <tr>
+                  <td><?= htmlspecialchars($ei['stuff_name']) ?></td>
+                  <td><code><?= htmlspecialchars($ei['batch_number']) ?></code></td>
+                  <td style="color:#ef4444;font-weight:600;"><?= htmlspecialchars($ei['expiry_date']) ?></td>
+                  <td><?= number_format((float)$ei['qty']) ?></td>
+                </tr>
+                <?php endforeach; ?>
+              </tbody>
+            </table>
+          </div>
+        <?php endif; ?>
+        <?php if (!empty($expiryAlerts)): ?>
+          <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:10px 14px;">
+            <div style="font-weight:700;color:#d97706;margin-bottom:8px;">🟡 منقضی‌شدنی ظرف ۳۰ روز</div>
+            <table class="fin-table" style="font-size:.82rem;">
+              <thead><tr><th>کالا</th><th>Lot/Batch</th><th>تاریخ انقضا</th><th>موجودی</th></tr></thead>
+              <tbody>
+                <?php foreach ($expiryAlerts as $ea): ?>
+                <tr>
+                  <td><?= htmlspecialchars($ea['stuff_name']) ?></td>
+                  <td><code><?= htmlspecialchars($ea['batch_number']) ?></code></td>
+                  <td style="color:#f59e0b;font-weight:600;"><?= htmlspecialchars($ea['expiry_date']) ?></td>
+                  <td><?= number_format((float)$ea['qty']) ?></td>
+                </tr>
+                <?php endforeach; ?>
+              </tbody>
+            </table>
+          </div>
+        <?php endif; ?>
+      </div>
+      <?php endif; ?>
 
       <!-- هشدار کالاهای کم‌موجودی -->
       <div class="fin-panel">

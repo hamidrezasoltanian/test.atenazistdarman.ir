@@ -487,6 +487,29 @@ function saveInvoiceToDb($pdo, $type, $targetStatus, $userId, $fiscalYearId) {
     if (!$invDate || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $invDate))
         return ['ok' => false, 'msg' => 'فرمت تاریخ نادرست است.'];
 
+    // بررسی کالاهای منقضی — فروش کالای منقضی مجاز نیست
+    if ($targetStatus === 'confirmed') {
+        $todayJ = jdate('Y/m/d');
+        foreach ($items as $item) {
+            $sid = (int)($item['stuff_id'] ?? 0);
+            if ($sid < 1) continue;
+            $stExp = $pdo->prepare("
+                SELECT batch_number, expiry_date FROM inv_batch_stock
+                WHERE stuff_id=? AND qty>0 AND expiry_date IS NOT NULL
+                  AND expiry_date < ? AND is_deleted=0
+                LIMIT 1
+            ");
+            $stExp->execute([$sid, $todayJ]);
+            $expRow = $stExp->fetch(PDO::FETCH_ASSOC);
+            if ($expRow) {
+                $stStuff = $pdo->prepare("SELECT stuff_name FROM stuffs WHERE id=?");
+                $stStuff->execute([$sid]);
+                $sName = $stStuff->fetchColumn();
+                return ['ok' => false, 'msg' => "⛔ کالای «{$sName}» دارای Lot منقضی (Batch: {$expRow['batch_number']}, انقضا: {$expRow['expiry_date']}) است — فروش مجاز نیست."];
+            }
+        }
+    }
+
     // نام طرف حساب
     $stPerson = $pdo->prepare('SELECT COALESCE(company_name, name) AS n FROM fin_persons WHERE id = ?');
     $stPerson->execute([$personId]);

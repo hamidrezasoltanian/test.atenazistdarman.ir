@@ -504,8 +504,36 @@ crm_opportunities ──opportunity_id──► fin_invoices ──── fin_in
 
 ---
 
+---
+
+## ✅ مرحله ۱۱ — تکمیل‌شده (Batch/Lot + انقضا + تلگرام بات + IRC)
+
+### ✅ ۱۱.۱ — ردیابی Batch/Lot و تاریخ انقضا (`phase11_batch_expiry.sql`)
+- [x] ستون‌های `batch_number VARCHAR(50)`, `expiry_date VARCHAR(12)` به `inv_ticket_items` اضافه شد
+- [x] ستون‌های `irc_code VARCHAR(20)`, `product_type ENUM(...)`, `shelf_life_months` به `stuffs` اضافه شد
+- [x] جدول `inv_batch_stock` — موجودی per Batch/Lot/انبار
+
+### ✅ ۱۱.۲ — بروزرسانی رابط کاربری انبار
+- [x] `inv_receipts.php`: ستون‌های Lot و تاریخ انقضا در فرم رسید/حواله + ذخیره در `inv_batch_stock`
+- [x] `inv_dashboard.php`: پنل هشدار کالاهای منقضی (قرمز) و در آستانه انقضا ۳۰ روز (زرد)
+- [x] `inv_kardex.php`: ستون‌های batch و انقضا با رنگ‌بندی (قرمز=منقضی، زرد=آستانه)
+
+### ✅ ۱۱.۳ — بلاک فروش کالای منقضی
+- [x] `fin_invoice_sell.php`: بررسی Lot منقضی قبل از تأیید فاکتور — بلاک با پیام خطا
+
+### ✅ ۱۱.۴ — تلگرام بات
+- [x] `includes/telegram.php`: `telegramSend()`, `telegramDailyReport()`, `telegramExpiryAlert()`, `telegramCheckAlert()`
+- [x] `public_html/admin/telegram_settings.php`: صفحه تنظیمات کامل — توکن، Chat ID، ساعت ارسال، تست
+- [x] `includes/menu_config.php`: لینک «تنظیمات تلگرام» در منوی تنظیمات
+
+### ✅ ۱۱.۵ — کد IRC و نوع محصول در کالاها
+- [x] `products_list.php`: نمایش IRC code در جدول (چیپ آبی)
+- [x] `products_list.php`: فرم ویرایش IRC، نوع محصول، عمر مفید (ماه) در مودال جزئیات
+- [x] `products_list.php`: action جدید `save_stuff_info` با prepared statement
+
+---
+
 ## بهبودهای فنی باقی‌مانده (اختیاری)
-- [ ] تلگرام بات — گزارش روزانه از `/api/v1/dashboard/summary`
 - [ ] React Native / Flutter کلاینت از `/api/v1/*`
 - [ ] WebSocket برای chat realtime (جایگزین polling)
 - [ ] sync خودکار `customers ↔ fin_persons` بر اساس شماره موبایل
@@ -534,3 +562,4 @@ crm_opportunities ──opportunity_id──► fin_invoices ──── fin_in
 | ۱۴۰۵/۰۳/۱۴ | `7198075` | مرحله ۹: رفع مشکلات ساختاری دیتابیس |
 | ۱۴۰۵/۰۳/۱۴ | `f9ead57` | مرحله ۱۰: رفع مشکلات معماری دیتابیس |
 | ۱۴۰۵/۰۳/۱۴ | `91ea6f3` | مرحله ۱۰: ماژول قیمت‌گذاری کامل |
+| ۱۴۰۵/۰۳/۱۵ | — | مرحله ۱۱: Batch/Lot + انقضا + تلگرام بات + IRC code |

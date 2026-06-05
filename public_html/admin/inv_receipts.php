@@ -267,18 +267,22 @@ if ($isAjax) {
             $ticketId = (int)$pdo->lastInsertId();
 
             $stmtItem = $pdo->prepare("INSERT INTO inv_ticket_items
-                (ticket_id, stuff_id, stuff_code, description, unit, qty, unit_price, total, sort_order)
-                VALUES (?,?,?,?,?,?,?,?,?)");
+                (ticket_id, stuff_id, stuff_code, description, batch_number, expiry_date, unit, qty, unit_price, total, sort_order)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?)");
             foreach ($items as $idx => $item) {
                 $stuffId   = (int)($item['stuff_id'] ?? 0);
                 $stuffCode = trim($item['stuff_code'] ?? '');
                 $desc      = trim($item['description'] ?? '');
+                $batch     = trim($item['batch_number'] ?? '') ?: null;
+                $expiry    = trim(faToEn($item['expiry_date'] ?? '')) ?: null;
+                // اعتبارسنجی فرمت تاریخ شمسی
+                if ($expiry && !preg_match('/^\d{4}\/\d{2}\/\d{2}$/', $expiry)) $expiry = null;
                 $unit      = trim($item['unit'] ?? 'عدد');
                 $qty       = max(0, (float)faToEn($item['qty'] ?? 0));
                 $unitPrice = max(0, (int)faToEn(str_replace(',', '', $item['unit_price'] ?? 0)));
                 $total     = (int)round($qty * $unitPrice);
                 if ($stuffId < 1 || $qty <= 0) continue;
-                $stmtItem->execute([$ticketId, $stuffId, $stuffCode, $desc, $unit, $qty, $unitPrice, $total, $idx]);
+                $stmtItem->execute([$ticketId, $stuffId, $stuffCode, $desc, $batch, $expiry, $unit, $qty, $unitPrice, $total, $idx]);
             }
 
             // اگر وضعیت تأیید شده بود موجودی بروز می‌شود
@@ -286,6 +290,23 @@ if ($isAjax) {
                 $updStmt = $pdo->prepare("UPDATE inv_tickets SET confirmed_by=?, confirmed_at=NOW() WHERE id=?");
                 $updStmt->execute([$userId, $ticketId]);
                 updateInventory($pdo, $ticketId);
+                // بروزرسانی موجودی per-Batch
+                $batchStmt = $pdo->prepare("
+                    INSERT INTO inv_batch_stock (stuff_id, stuff_code, storeroom_id, batch_number, expiry_date, qty)
+                    VALUES (?,?,?,?,?,?)
+                    ON DUPLICATE KEY UPDATE qty = qty + VALUES(qty), expiry_date = COALESCE(VALUES(expiry_date), expiry_date)
+                ");
+                foreach ($items as $item) {
+                    $sid  = (int)($item['stuff_id'] ?? 0);
+                    $sc   = trim($item['stuff_code'] ?? '');
+                    $b    = trim($item['batch_number'] ?? '') ?: 'NO-LOT';
+                    $exp  = trim(faToEn($item['expiry_date'] ?? '')) ?: null;
+                    $q    = max(0, (float)faToEn($item['qty'] ?? 0));
+                    if ($sid < 1 || $q <= 0) continue;
+                    // رسید: افزایش / حواله: کاهش
+                    $delta = in_array($type, ['dispatch', 'return']) ? -$q : $q;
+                    $batchStmt->execute([$sid, $sc, $storeroomId, $b, $exp, $delta]);
+                }
             }
             $pdo->commit();
             echo json_encode(['status'=>'ok','message'=>'سند با موفقیت ذخیره شد','id'=>$ticketId,'ticket_number'=>$ticketNumber]);
@@ -638,12 +659,14 @@ include __DIR__ . '/../../templates/header.php';
                         <thead>
                             <tr>
                                 <th style="width:30px;">#</th>
-                                <th style="min-width:180px;">کالا</th>
-                                <th style="width:80px;">کد</th>
-                                <th style="width:70px;">واحد</th>
-                                <th style="width:80px;">تعداد</th>
-                                <th style="width:120px;">قیمت واحد (ریال)</th>
-                                <th style="width:110px;">جمع (ریال)</th>
+                                <th style="min-width:160px;">کالا</th>
+                                <th style="width:70px;">کد</th>
+                                <th style="width:60px;">واحد</th>
+                                <th style="width:75px;">تعداد</th>
+                                <th style="width:110px;">قیمت واحد (ریال)</th>
+                                <th style="width:100px;">Lot/Batch</th>
+                                <th style="width:100px;">تاریخ انقضا</th>
+                                <th style="width:90px;">جمع (ریال)</th>
                                 <th style="width:36px;"></th>
                             </tr>
                         </thead>
@@ -872,7 +895,9 @@ function saveForm() {
         const price   = row.querySelector('.col-price').value.replace(/,/g,'').trim();
         const rowDesc = row.querySelector('.col-desc') ? row.querySelector('.col-desc').value : '';
         if (!stuffId || !qty) return;
-        items.push({ stuff_id:stuffId, stuff_code:stuffCode, description:rowDesc, unit, qty, unit_price:price||0 });
+        const batch  = row.querySelector('.col-batch')  ? row.querySelector('.col-batch').value.trim()  : '';
+        const expiry = row.querySelector('.col-expiry') ? row.querySelector('.col-expiry').value.trim() : '';
+        items.push({ stuff_id:stuffId, stuff_code:stuffCode, description:rowDesc, unit, qty, unit_price:price||0, batch_number:batch, expiry_date:expiry });
     });
     if (items.length === 0) { showToast('حداقل یک قلم کالا باید وارد شود', 'err'); return; }
 
@@ -943,9 +968,11 @@ function addItemRow() {
             </div>
         </td>
         <td><input type="text" class="fin-input col-code" readonly style="background:#f9fafb;width:70px;"></td>
-        <td><input type="text" class="fin-input col-unit" style="width:60px;" value="عدد"></td>
+        <td><input type="text" class="fin-input col-unit" style="width:55px;" value="عدد"></td>
         <td><input type="number" class="fin-input col-qty" min="0.001" step="0.001" value="1" oninput="recalcRow(this.closest('tr'))" style="width:70px;"></td>
-        <td><input type="text" class="fin-input col-price price-input" placeholder="0" oninput="recalcRow(this.closest('tr'))" style="width:110px;"></td>
+        <td><input type="text" class="fin-input col-price price-input" placeholder="0" oninput="recalcRow(this.closest('tr'))" style="width:105px;"></td>
+        <td><input type="text" class="fin-input col-batch" placeholder="مثال: LOT2401" style="width:95px;"></td>
+        <td><input type="text" class="fin-input col-expiry kama-date" placeholder="۱۴۰۳/۱۲/۲۹" style="width:95px;" autocomplete="off"></td>
         <td><span class="col-total" style="font-weight:600;color:#059669;">۰</span></td>
         <td><button type="button" class="fin-btn fin-btn-danger fin-btn-sm" onclick="removeRow(this)">✕</button></td>`;
     tbody.appendChild(tr);
