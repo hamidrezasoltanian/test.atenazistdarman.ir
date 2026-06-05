@@ -22,6 +22,7 @@ return [
             ['title' => 'سوابق آموزشی §6.2',        'link' => 'admin/hr_training.php',    'perm' => 'crm_view'],
             ['title' => 'تأمین‌کنندگان §7.4',       'link' => 'admin/sup_evaluation.php', 'perm' => 'crm_view'],
             ['title' => 'کنترل مدارک §4.2.4',       'link' => 'admin/doc_control.php',    'perm' => 'crm_view'],
+            ['title' => 'ممیزی داخلی §8.2.2',       'link' => 'admin/qms_audit.php',      'perm' => 'crm_view'],
         ]
     ],
 
