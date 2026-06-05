@@ -16,8 +16,9 @@ return [
         'perm'  => 'crm_view',
         'svg'   => '<path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>',
         'submenu' => [
-            ['title' => 'شکایات §8.2',    'link' => 'admin/qms_complaints.php', 'perm' => 'crm_view'],
-            ['title' => 'CAPA §8.5',       'link' => 'admin/capa.php',           'perm' => 'crm_view'],
+            ['title' => 'شکایات §8.2',             'link' => 'admin/qms_complaints.php', 'perm' => 'crm_view'],
+            ['title' => 'CAPA §8.5',                'link' => 'admin/capa.php',           'perm' => 'crm_view'],
+            ['title' => 'محصول نامنطبق §8.3',       'link' => 'admin/nc_records.php',     'perm' => 'crm_view'],
         ]
     ],
 
