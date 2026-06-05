@@ -21,6 +21,7 @@ return [
             ['title' => 'محصول نامنطبق §8.3',       'link' => 'admin/nc_records.php',     'perm' => 'crm_view'],
             ['title' => 'سوابق آموزشی §6.2',        'link' => 'admin/hr_training.php',    'perm' => 'crm_view'],
             ['title' => 'تأمین‌کنندگان §7.4',       'link' => 'admin/sup_evaluation.php', 'perm' => 'crm_view'],
+            ['title' => 'کنترل مدارک §4.2.4',       'link' => 'admin/doc_control.php',    'perm' => 'crm_view'],
         ]
     ],
 
