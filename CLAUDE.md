@@ -10,7 +10,7 @@
 **نام:** آتنا زیست درمان — سیستم یکپارچه مدیریت کسب‌وکار (ERP)
 **هدف نهایی:** نرم‌افزار کامل ERP شامل CRM، حسابداری دوطرفه، انبارداری، HR، اتوماسیون اداری و REST API موبایل
 
-**وضعیت:** مرحله ۱۴ تکمیل شده — مسیر ISO 13485 در جریان
+**وضعیت:** مرحله ۱۸ تکمیل شده — QMS کامل ISO 13485
 
 ---
 
@@ -708,6 +708,37 @@ crm_opportunities ──opportunity_id──► fin_invoices ──── fin_in
 
 ---
 
+## ✅ مرحله ۱۸ — تکمیل‌شده (واجب‌های QMS — داشبورد + API + PDF + یادآور)
+
+### ✅ ۱۸.۱ — داشبورد QMS
+- [x] `erp_dashboard.php`: ردیف KPI جدید QMS — ۴ کارت: NC باز، CAPA باز، مدارک نیاز به بازنگری، گواهینامه در حال انقضا
+- [x] نوار هشدار بالا: chips برای CAPA معوق و NC باز
+- [x] پنل هشدارها: CAPA‌های معوق با سررسید + NC‌های قرنطینه‌شده
+
+### ✅ ۱۸.۲ — REST API QMS
+- [x] `GET /api/v1/qms/nc` — لیست NC records
+- [x] `GET /api/v1/qms/capa` — لیست CAPA requests
+- [x] `GET /api/v1/qms/audits` — لیست ممیزی‌ها
+- [x] `GET /api/v1/qms/summary` — snapshot QMS (همان اعداد داشبورد)
+
+### ✅ ۱۸.۳ — PDF گزارش‌های QMS
+- [x] `qms_pdf.php` — تولید PDF با TCPDF برای NC / CAPA / ممیزی
+- [x] دکمه PDF در `nc_records.php`، `capa.php`، `qms_audit.php`
+- [x] هدر/فوتر با نام شرکت، شماره صفحه، تاریخ چاپ
+
+### ✅ ۱۸.۴ — یادآور خودکار
+- [x] `qms_reminders.php` — صفحه یادآور اجرایی (CLI/cron + وب)
+- [x] `includes/telegram.php`: تابع `telegramQmsAlert()` — گزارش روزانه QMS
+- [x] اعلان داخلی CAPA سررسید ۷ روز آینده → `user_notifications`
+- [x] اعلان داخلی گواهینامه انقضا ۳۰ روز آینده → `user_notifications`
+- [x] اعلان داخلی مدارک نیاز به بازنگری → `user_notifications`
+- [x] جلوگیری از اعلان تکراری (بررسی DATE همان روز)
+- [x] لینک «یادآورهای QMS» در منوی QMS (فقط admin)
+
+### کامیت: `eba7d8c`
+
+---
+
 ## بهبودهای فنی باقی‌مانده (اختیاری)
 - [ ] React Native / Flutter کلاینت از `/api/v1/*`
 - [ ] WebSocket برای chat realtime (جایگزین polling)
@@ -744,3 +775,4 @@ crm_opportunities ──opportunity_id──► fin_invoices ──── fin_in
 | ۱۴۰۵/۰۳/۱۵ | — | مرحله ۱۵: سوابق آموزشی §6.2 + ارزیابی تأمین‌کنندگان §7.4 |
 | ۱۴۰۵/۰۳/۱۵ | — | مرحله ۱۶: کنترل مدارک با نسخه‌بندی — ISO 13485 §4.2.4 |
 | ۱۴۰۵/۰۳/۱۵ | — | مرحله ۱۷: ممیزی داخلی §8.2.2 + بازنگری مدیریت §5.6 |
+| ۱۴۰۵/۰۳/۱۵ | `eba7d8c` | مرحله ۱۸: داشبورد QMS + REST API + PDF + یادآور خودکار |
