@@ -10,6 +10,14 @@ return [
     ['type' => 'separator', 'title' => 'داشبورد'],
 
     [
+        'title' => 'کارتابل تأیید',
+        'link'  => 'admin/approval_inbox.php',
+        'icon_color' => '#16a34a',
+        'perm'  => 'dashboard_view',
+        'svg'   => '<path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>',
+        'badge' => 'approval_pending',
+    ],
+    [
         'title' => 'داشبورد ERP',
         'link'  => 'admin/erp_dashboard.php',
         'icon_color' => '#2563eb',

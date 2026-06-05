@@ -23,6 +23,24 @@ if (isset($_SESSION['user_id']) && isset($pdo) && function_exists('getLetterBadg
     $isAdminUser = (isset($_SESSION['role']) && in_array($_SESSION['role'], ['admin', 'manager']));
     $letterBadges = getLetterBadges($pdo, $_SESSION['user_id'], $isAdminUser);
 }
+// بج تأییدهای در انتظار
+if (isset($_SESSION['user_id']) && isset($pdo)) {
+    try {
+        $sidebarRole = strtolower($_SESSION['role'] ?? '');
+        $sidebarUid  = (int)$_SESSION['user_id'];
+        $stApr = $pdo->prepare(
+            "SELECT COUNT(*) FROM approval_requests ar
+             LEFT JOIN approval_flow_steps afs ON afs.flow_id=ar.flow_id AND afs.step_order=ar.current_step
+             WHERE ar.status='pending'
+               AND ((afs.approver_type='role' AND LOWER(afs.approver_value)=LOWER(?))
+                 OR (afs.approver_type='user' AND afs.approver_value=?)
+                 OR LOWER(?)='admin')"
+        );
+        $stApr->execute([$sidebarRole, (string)$sidebarUid, $sidebarRole]);
+        $aprCount = (int)$stApr->fetchColumn();
+        if ($aprCount > 0) $letterBadges['approval_pending'] = $aprCount;
+    } catch (Throwable $ignored) {}
+}
 
 // تشخیص صفحه فعال
 $currentScript = basename($_SERVER['PHP_SELF'] ?? '');
@@ -99,6 +117,11 @@ $currentScript = basename($_SERVER['PHP_SELF'] ?? '');
                          fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
                          style="color:<?= $item['icon_color'] ?>"><?= $item['svg'] ?></svg>
                     <span><?= htmlspecialchars($item['title']) ?></span>
+                    <?php
+                    $topBadgeVal = (isset($item['badge']) && isset($letterBadges[$item['badge']])) ? (int)$letterBadges[$item['badge']] : 0;
+                    if ($topBadgeVal > 0): ?>
+                        <span class="sub-badge-val" style="margin-right:auto;"><?= $topBadgeVal ?></span>
+                    <?php endif; ?>
                 </a>
             <?php endif; ?>
         </li>

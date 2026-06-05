@@ -242,9 +242,69 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isAjax) {
             exit;
         }
 
-        // ---- تأیید ----
+        // ---- تأیید (با بررسی جریان تأیید) ----
         if ($action === 'confirm_invoice') {
             if (!csrf_verify($_POST['csrf_token'] ?? '')) { echo json_encode(['ok'=>false,'msg'=>'خطای امنیتی.']); exit; }
+
+            require_once __DIR__ . '/../../includes/approval.php';
+
+            // محاسبه سریع مبلغ کل از POST برای تشخیص آستانه
+            $quickTotal = 0;
+            foreach ($_POST['items'] ?? [] as $it) {
+                $q  = (float)faToEn($it['qty'] ?? 1);
+                $p  = (int)str_replace([',',' '],'',faToEn($it['unit_price'] ?? '0'));
+                $dp = (float)faToEn($it['discount_pct'] ?? '0');
+                $tp = (float)faToEn($it['tax_pct'] ?? '9');
+                $g  = (int)round($q * $p);
+                $d  = (int)round($g * $dp / 100);
+                $n  = $g - $d;
+                $quickTotal += $n + (int)round($n * $tp / 100);
+            }
+            $quickTotal += (int)str_replace([',',' '],'',faToEn($_POST['shipping'] ?? '0'));
+
+            $flow = approvalGetFlow($pdo, 'invoice_buy', $quickTotal);
+
+            if ($flow && $flow['step_count'] > 0) {
+                $editId = (int)($_POST['invoice_id'] ?? 0);
+
+                // اگر قبلاً تأیید شده → ادامه بده
+                if ($editId > 0) {
+                    $aprStatus = approvalGetStatus($pdo, 'invoice_buy', $editId);
+                    if ($aprStatus && $aprStatus['status'] === 'approved') {
+                        echo json_encode(saveBuyInvoice($pdo, 'confirmed', $userId, $fiscalYearId));
+                        exit;
+                    }
+                    if ($aprStatus && $aprStatus['status'] === 'rejected') {
+                        echo json_encode(['ok'=>false,'msg'=>'❌ این فاکتور توسط مدیریت رد شده است.']);
+                        exit;
+                    }
+                    if ($aprStatus && $aprStatus['status'] === 'pending') {
+                        echo json_encode(['ok'=>false,'pending_approval'=>true,'msg'=>'⏳ این فاکتور در انتظار تأیید مدیریت است. کارتابل تأیید را بررسی کنید.']);
+                        exit;
+                    }
+                }
+
+                // ذخیره به عنوان پیش‌نویس تا ID بگیریم
+                $draftRes = saveBuyInvoice($pdo, 'draft', $userId, $fiscalYearId);
+                if (!$draftRes['ok']) { echo json_encode($draftRes); exit; }
+                $newId = (int)($draftRes['id'] ?? 0);
+
+                if ($newId > 0) {
+                    approvalCreate($pdo, (int)$flow['id'], 'invoice_buy', $newId, $userId, $quickTotal,
+                        'فاکتور خرید #' . ($draftRes['invoice_number'] ?? $newId));
+                    logActivity($pdo, $userId, 'invoice_buy_approval_requested', "درخواست تأیید فاکتور خرید #$newId ارسال شد");
+                }
+
+                echo json_encode([
+                    'ok'              => true,
+                    'pending_approval' => true,
+                    'id'              => $newId,
+                    'msg'             => '✅ فاکتور ذخیره شد و برای تأیید مدیریت ارسال شد. پس از تأیید، confirm می‌شود.',
+                ]);
+                exit;
+            }
+
+            // بدون جریان تأیید — مستقیم confirm کن
             echo json_encode(saveBuyInvoice($pdo, 'confirmed', $userId, $fiscalYearId));
             exit;
         }

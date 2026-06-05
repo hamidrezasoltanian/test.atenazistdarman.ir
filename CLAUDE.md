@@ -533,6 +533,32 @@ crm_opportunities ──opportunity_id──► fin_invoices ──── fin_in
 
 ---
 
+---
+
+## ✅ مرحله ۱۲ — تکمیل‌شده (جریان تأیید چندسطحی)
+
+### ✅ ۱۲.۱ — موتور تأیید
+- [x] `db_migrations/phase12_approval.sql` — ۴ جدول: approval_flows, flow_steps, requests, logs
+- [x] `includes/approval.php` — توابع: `approvalGetFlow`, `approvalCreate`, `approvalGetStatus`, `approvalCanAct`, `approvalProcess`, `approvalGetPending`
+- [x] جریان پیش‌فرض: فاکتور خرید بالای ۱ میلیارد تومان + هزینه بالای ۵۰۰ میلیون → تأیید management
+
+### ✅ ۱۲.۲ — رابط کاربری
+- [x] `approval_inbox.php` — کارتابل تأیید: لیست درخواست‌های pending + approve/reject با یادداشت + تاریخچه کامل
+- [x] `approval_flows.php` — مدیریت جریان‌ها: CRUD جریان + مراحل
+- [x] `sidebar.php`: بج عددی تأییدهای در انتظار روی لینک کارتابل
+- [x] `menu_config.php`: کارتابل تأیید در بالای منو + تنظیمات جریان‌ها
+
+### ✅ ۱۲.۳ — یکپارچه‌سازی fin_invoice_buy
+- [x] هنگام تأیید فاکتور خرید: اگر مبلغ بالای آستانه باشد → draft ذخیره + approval_request ایجاد + پیام "در انتظار تأیید"
+- [x] اگر قبلاً approved شده باشد → مستقیم confirm
+- [x] هنگام تأیید در approval_inbox → status فاکتور به confirmed تغییر می‌کند
+- [x] اطلاع‌رسانی تلگرام به درخواست‌کننده پس از تأیید نهایی
+
+### جداول جدید (مرحله ۱۲)
+`approval_flows` · `approval_flow_steps` · `approval_requests` · `approval_request_logs`
+
+---
+
 ## بهبودهای فنی باقی‌مانده (اختیاری)
 - [ ] React Native / Flutter کلاینت از `/api/v1/*`
 - [ ] WebSocket برای chat realtime (جایگزین polling)
@@ -563,3 +589,4 @@ crm_opportunities ──opportunity_id──► fin_invoices ──── fin_in
 | ۱۴۰۵/۰۳/۱۴ | `f9ead57` | مرحله ۱۰: رفع مشکلات معماری دیتابیس |
 | ۱۴۰۵/۰۳/۱۴ | `91ea6f3` | مرحله ۱۰: ماژول قیمت‌گذاری کامل |
 | ۱۴۰۵/۰۳/۱۵ | — | مرحله ۱۱: Batch/Lot + انقضا + تلگرام بات + IRC code |
+| ۱۴۰۵/۰۳/۱۵ | — | مرحله ۱۲: جریان تأیید چندسطحی + کارتابل تأیید |
